@@ -1,0 +1,140 @@
+# -*- Mode: perl; tab-width: 4; indent-tabs-mode: nil; -*-
+# vim:ai:ts=4:sw=4:et
+# Weather module
+# Concept based on NOAA.pl from www.infobot.org
+# (C) 2002 Dave O'Neill <dmo@acm.org>
+# Please steal this code.
+
+package BotModules::Weather;
+use vars qw(@ISA);
+use Geo::WeatherNWS;
+
+## Limit of sanity for heat values, in degC.
+use constant  HEAT_INSANITY_VALUE  => 50;
+
+@ISA = qw(BotModules);
+1;
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        '' => 'This module gets weather info. Ask me an airport code, I will retrieve the weather.',
+        'weather' => 'Call this command with an airport code to get the current weather. Syntax: weather CYOW.  You can optionally append "metric" or "imperial" to change the returned units.  Plaintext names for cities can also be added and used instead of airport codes.',
+    };
+}
+
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+        #[name, save?, settable?, value ]
+        ['usemetric', 1, 1, 1],
+        ['cities', 1, 1, {
+            'ottawa' => 'CYOW',
+            'sf' => 'KSFO'} ],
+    );
+}
+
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+
+    my($code, $units);
+    if (($code, $units) = $message =~ /^\s*weather?\s+(.+?)(:?\s+(.+?))?\s*$/osi) {
+        ## $1 should be the code, $2 is the units to use, 'metric' or 'imperial'
+
+        $self->spawnChild($event, \&weather_do, [ $self, $event, uc($code), $self->shouldUseMetric($units) ], 'weather', [ ]);
+    } else {
+        return $self->SUPER::Told(@_);
+    }
+    return 0; # we've dealt with it, no need to do anything else.
+}
+
+sub weather_do 
+{
+    my ($self, $event, $code, $want_metric) = @_;
+    $ENV{'FTP_PASSIVE'} = 1;
+    my $report = new Geo::WeatherNWS;
+
+    ## -- #bot --
+    ## <dave0> Yeah, we should have a lookup table of city names so we can
+    ## do 'foo, weather ottawa' instead of using airport codes.
+    foreach my $str (keys %{$self->{'cities'}}) {
+        if(uc($str) eq $code) {
+            $code = $self->{'cities'}->{$str};
+            last;
+        }
+    }
+    
+    if($code !~ m/^\w{4}$/) {
+        return "$event->{'from'}: Sorry, $code isn't a weather station";
+    }
+    
+    $report->getreport($code);
+    
+    if($report->{error}) {
+        return "$event->{'from'}: Sorry, couldn't get weather: $report->{errortext}";
+    }
+    my $weather = "Weather for $report->{'code'} at $report->{'time'}h UTC: ";
+    
+    ## Grr.  heat index and windchill can sometimes be completely nuts.
+    my($use_windchill, $use_heatindex) = (0,0);
+    if( ($report->{'windchill_c'} > -(HEAT_INSANITY_VALUE)) && ( $report->{'windchill_c'} < $report->{'temperature_c'})) { 
+        $use_windchill = 1;
+    }
+    if( ($report->{'heat_index_c'} < HEAT_INSANITY_VALUE) && ( $report->{'heat_index_c'} > $report->{'temperature_c'})) { 
+        $use_heatindex = 1;
+    }
+        
+    if($want_metric) {
+        $weather .= sprintf("%s, %dC ", $report->{conditionstext}, $report->{'temperature_c'});
+        if($use_windchill) {
+            $weather .= "($report->{'windchill_c'}C windchill) ";
+        } elsif($use_heatindex) {
+            $weather .= "($report->{'heat_index_c'}C with humidex) ";
+        }
+        $weather .= "wind ". int($report->{windspeedmph} * 1.6) . "km/h";
+    } else {
+        $weather .= sprintf("%s, %dF ", $report->{conditionstext}, $report->{'temperature_f'});
+        if($use_windchill) {
+            $weather .= "($report->{'windchill_f'}F windchill) ";
+        } elsif($use_heatindex) {
+            $weather .= "($report->{'heat_index_f'}F with humidex) ";
+        }
+        $weather .= ", wind ". int($report->{windspeedmph}) . "mph";
+    }
+
+    return "$event->{'from'}: $weather";
+}
+
+sub ChildCompleted {
+    my $self = shift;
+    my ($event, $type, $output, @data) = @_;
+    if($type eq 'weather') {
+        local $event->{'target'} = $data[0] if defined($data[0]);
+        $self->say($event, $output);
+    } else {
+        return $self->SUPER::ChildCompleted(@_);
+    }
+}
+
+sub shouldUseMetric 
+{
+    my $self = shift;
+    my ($str) = @_;
+    ## Set default, then check for overrides.
+    
+    my $usemetric = $self->{'usemetric'};
+    
+    if ($str =~ /imperial/i) {
+        $usemetric = 0; 
+    }
+    
+    if ($str =~ /metric/i) {
+        $usemetric = 1; 
+    }
+
+    return $usemetric;
+}

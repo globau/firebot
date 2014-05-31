@@ -1,0 +1,113 @@
+# -*- Mode: perl; tab-width: 4; indent-tabs-mode: nil; -*-
+################################
+# Math Module               #
+################################
+
+package BotModules::Math;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+# RegisterConfig - Called when initialised, should call registerVariables
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+#        ['updateDelay', 1, 1, 120],
+#        ['bugmessages', 0, 0, 0], # how many times we have reported bug changes
+    );
+}
+
+#my $conn;
+#my @cmdqueue = ();
+#my %mailignore = ();
+
+
+# Schedule - called when bot connects to a server, to install any schedulers
+# use $self->schedule($event, $delay, $times, $data)
+# where $times is 1 for a single event, -1 for recurring events,
+# and a +ve number for an event that occurs that many times.
+#sub Schedule {
+#    my $self = shift;
+#    my ($event) = @_;
+#    $self->schedule($event, \$self->{'updateDelay'}, -1, 'bzbot');
+#    $self->SUPER::Schedule($event);
+#}
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    my %commands = (
+        '' => 'The math module contains features for mathematical calculations.',
+        'randint' => 'Returns a random integer between 0 and $maxint, default: 10000. Syntax: randint [<maxint>]. For example \'randint 100\'.',
+        'calc' => 'Perform a mathematical calculation. Syntax: calc <expression>. For example \'calc 2+2\'.',
+    );
+    #if ($self->isAdmin($event)) {
+    #    $commands{'mute'} = 'Disable reporting of bug status in a channel. (Only does something if the given tree exists.) Syntax: mute <tree> in <channel>';
+    #    $commands{'unmute'} = 'Enable reporting of bug status in a channel. By default, trees are reported in all channels that the module is active in. Syntax: unmute <tree> in <channel>';
+    #}
+    return \%commands;
+}
+
+#sub Heard {
+#    my $self = shift;
+#    my ($event, $message) = @_;
+#    if ($message =~/^randint$/i) {
+#        $self->say($event, "$event->{'from'}: Umm.... ");
+#    }
+#    return 0; # dealt with it...
+#}
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+
+    print "Debug: $message\n";
+
+    #if ($message =~/^randint$/i) {
+	if ($message =~ /^\s*randint?(?:\s+(.*?))?\s*(?:[, ]\s*please)?\?*\s*$/osi) {
+		my $range = 10000;
+		if ($1) { $range = $1; }
+		my $random_number = int(rand($range));
+        $self->say($event, "$event->{'from'}: Umm.... $random_number");
+	} elsif ($message =~ /^\s*calc?(?:\s+(.*?))?\s*(?:[, ]\s*please)?\?*\s*$/osi) {
+		#if ($1) {
+			#$result = eval($1);
+			#$self->say($event, "$event->{'from'}: $result");
+		#} else {
+			$self->say($event, "$event->{'from'}: I didn't understand that. Please try again.");
+		#}
+    } else {
+        return $self->SUPER::Told(@_);
+    }
+    return 0; # dealt with it...
+}
+
+sub Scheduled {
+    my $self = shift;
+    my ($event, @data) = @_;
+    if ($data[0] eq 'bzbot') {
+        #$self->GetTrees($event, 0);
+        #$self->CheckForBugs($event, 0);
+    } else {
+        $self->SUPER::Scheduled($event, @data);
+    }
+}
+
+sub sayOrNotice {
+    my $self = shift;
+    if ($self->{'useNotice'}) {
+        $self->notice(@_);
+    } else {
+        $self->say(@_);
+    }
+}
+
+
+sub targettedSay {
+    my $self = shift;
+    my($event, $message, $direct) = @_;
+    if ($direct and length($message)) {
+        $self->say($event, "$event->{from}: $message");
+    }
+}

@@ -1,0 +1,39 @@
+################################
+# FoxBot Module                #
+################################
+
+package BotModules::FoxBot;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+        ['lasthelp', 0, 0, 0],
+        ['helpbuffer', 1, 1, 20],
+        ['ignoredNicks', 1, 1, []],
+        ['channelMessage', 1, 1, {}],
+    );
+}
+
+sub Heard {
+    my $self = shift;
+    my ($event, $message) = @_;
+    if (($message =~/^help!$/i) || ($message =~/^"help!"$/i) || ($message =~/^!help$/i) || ($message =~/^h+\w+p!$/i)) {
+        if (($event->{'time'} - $self->{'lasthelp'}) > $self->{'helpbuffer'}) {
+            unless (scalar(grep $event->{'from'} =~ /^$_$/gi, @{$self->{'ignoredNicks'}}))  {
+                if (defined($self->{'channelMessage'}->{$event->{'channel'}})) {
+                    $self->say($event, "$event->{'from'}: $self->{'channelMessage'}->{$event->{'channel'}}");
+                    $self->{'lasthelp'} = $event->{'time'};
+                }
+                else {
+                    $self->say($event, "$event->{'from'}: Welcome to $event->{'channel'}! Just ask your question and someone should be with you shortly. If you don't get an answer after a while, you can try taking a look through the knowledge base: http://kb.mozillazine.org/Main_Page");
+                    $self->{'lasthelp'} = $event->{'time'};
+                }
+            }
+        }
+    }
+    return 0;
+}

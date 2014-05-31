@@ -1,0 +1,162 @@
+# -*- Mode: perl; tab-width: 4; indent-tabs-mode: nil; -*-
+# vim: syntax=perl
+################################
+# ShutdownHelper Module              #
+################################
+
+
+package BotModules::ShutdownHelper;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+
+use XML::LibXML;
+use Fcntl qw(:DEFAULT :flock);
+use File::Basename;
+
+# For parsing cmd.log records.
+use constant FIELD_SEPARATOR => '::::';
+# The log file that we read to report bug changes.
+# This will be put in the directory returned by dirname($0).
+use constant CMD_LOG => '.cmd.log';
+1;
+
+sub Initialise {
+    my $self = shift;
+    my $retval = $self->SUPER::Initialise(@_);
+    my ($throw_away) = $self->GetCmdLog();
+    $throw_away->truncate(0) if $throw_away;
+    $throw_away->close() if $throw_away;
+    return $retval;
+}
+
+# RegisterConfig - Called when initialised, should call registerVariables
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+      # [ name, save?, settable? ]
+        # How frequently we check for new commands we've received, in seconds.
+        ['updateDelay', 1, 1, 1],
+    );
+}
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        '' => 'The ShutdownHelper module provides command line level methods to inject commands for mozbot to perform.',
+    } if $self->isAdmin($event);
+    return {};
+}
+
+# Schedule - called when bot connects to a server, to install any schedulers
+# use $self->schedule($event, $delay, $times, $data)
+# where $times is 1 for a single event, -1 for recurring events,
+# and a +ve number for an event that occurs that many times.
+sub Schedule {
+    my $self = shift;
+    my ($event) = @_;
+    $self->schedule($event, \$self->{'updateDelay'}, -1, 'ShutdownHelper-Cmds');
+    return $self->SUPER::Schedule($event);
+}
+
+sub Scheduled {
+    my $self = shift;
+    my ($event, @data) = @_;
+    if ($data[0] eq 'ShutdownHelper-Cmds') {
+        $self->CheckForCmds($event);
+    } else {
+        return $self->SUPER::Scheduled($event, @data);
+    }
+    return 0;
+}
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    #if ($message =~ /^\s*setup\s*cmd\s*\s+(\S+)\s+(.+?)\s*$/osi) {
+        #$self->{'servicesNick'} = $1;
+        #$self->{'loginCommand'} = $2;
+	#	$self->saveConfig();
+	#	$self->say($event, "Ok, I'll contact $self->{'servicesNick'} regularly from now on.");
+	#	$self->login($event);
+    #} else {
+        return $self->SUPER::Told(@_);
+    #}
+    return 0; # we've dealt with it, no need to do anything else.
+}
+
+sub CheckForCmds {
+    my $self = shift;
+    my ($event) = @_;
+
+    my ($cmd_log, $cmd_file) = $self->GetCmdLog();
+
+    my @log_lines;
+    if (defined $cmd_log) {
+        # We need LOCK_EX because we're going to truncate it.
+        flock($cmd_log, LOCK_EX);
+        @log_lines = $cmd_log->getlines();
+        $cmd_log->truncate(0)
+            or ($self->debug("Failed to truncate $cmd_file: $!") && return);
+        flock($cmd_log, LOCK_UN);
+        $cmd_log->close() or $self->debug("Failed to close $cmd_file: $!");
+        $self->debug("Read " . scalar(@log_lines) . " command log lines.")
+            if @log_lines;
+    }
+    else {
+        # We will have already output a more detailed error from GetCmdLog.
+        $self->debug("CheckForCmds Failed: Couldn't read command log.");
+        return;
+    }
+
+    foreach my $line (@log_lines) {
+        chomp($line);
+        $self->debug("Reading cmd_log line: $line");
+        my $sep = FIELD_SEPARATOR;
+        $line =~ /^(.+)$sep(.+)$sep(.+)$/;
+        my ($cmd, $who, $message) =
+            ($1, $2, $3);
+			
+		#$self->debug("$cmd | $who | $message");
+		
+		if ($cmd eq 'Shutdown')
+		{
+			$self->debug("Received shutdown command...");
+			my $reason = "System: Shutting down...";
+			if ($message)
+			{
+				$reason = $message . " ($who)";
+			}
+			$self->debug($reason);
+			$event->{'bot'}->quit($reason);
+			exit(0); # prevents any other events happening...
+		} elsif ($cmd eq 'Cycle')
+		{
+			my $reason = 'System: I was told to cycle by '.$who.'. BRB!';
+			if ($message)
+			{
+				$reason = $message . " ($who)";
+			}
+            $event->{'bot'}->quit($reason);
+            Configuration::Get($cfgfile, ::configStructure());
+		}
+
+    } # foreach @log_lines
+}
+
+# Creates the CMD_LOG file if it doesn't exist, and returns
+# an open IO::File for it, and also the filename of that file.
+sub GetCmdLog {
+    my $self = shift;
+
+    my $file_name = CMD_LOG;
+    # And we generally trust $cmd_log to be an OK path, so untaint it now.
+    $file_name =~ /^(.*)$/;
+    $file_name = $1;
+
+    my $file = new IO::File($file_name, O_RDWR | O_CREAT, 0660)
+            or $self->debug("Could not open/create $file_name for reading" 
+                            . " incoming commands: $!");
+    return ($file, $file_name);
+}

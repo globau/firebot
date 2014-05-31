@@ -1,0 +1,553 @@
+################################
+#  Timezone Module             #
+################################
+
+#
+# Module simply checks the LiveChat status and reports it.
+#
+# My one contribution to the world of Mozilla -- Cww
+#
+
+package BotModules::Timezone;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+use Fcntl qw(:DEFAULT :flock);
+use File::Basename;
+use constant SECS_IN_WEEK => 604800;
+use constant SECS_IN_DAY => 86400;
+1;
+
+# RegisterConfig - Called when initialised, should call registerVariables
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+        # [ name, save?, settable? ]
+        ['statements',1,1,{
+
+            '37' => 'The following time zones are ',
+            '27' => 'Foxkeh knows a lot of time zones but not that one.  Try using GMT offsets.',
+            '29' => 'Foxkeh doesn\'t know any time zone abbreviations associated with ',
+            '38' => 'Foxkeh knows that one! ',
+            '39' => 'Foxkeh can\'t travel through time.  Timezones have to be between -12 and +14.',
+            '42' => 'DON\'T PANIC (in large friendly letters)',
+            '42.1' => 'Foxkeh sticks his paw into the towel and pulls out the letters: W-H-A-T-D-O-Y-O-U-G-E-T-I-F-Y-O-U-M-U-L-T-I-P-L-Y-S-I-X-B-Y-N-I-N-E',
+            }
+        ],
+        ['quotefile',1,1,'h2g2quotes.txt'],
+        ['parseTimeWeekHash',0,0,{
+                    'm'         => -3,
+                    'mo'        => -3,
+                    'mon'       => -3,
+                    'monday'    => -3,
+                    'mondays'   => -3,
+                    't'         => -2,
+                    'tu'        => -2,
+                    'tue'       => -2,
+                    'tues'      => -2,
+                    'tuesday'   => -2,
+                    'tuesdays'  => -2,
+                    'w'         => -1,
+                    'we'        => -1,
+                    'wed'       => -1,
+                    'wednesday' => -1,
+                    'wednesdays'=> -1,
+                    'r'         =>  7,
+                    'th'        =>  7,
+                    'thu'       =>  7,
+                    'thur'      =>  7,
+                    'thurs'     =>  7,
+                    'thursday'  =>  7,
+                    'thursdays' =>  7,
+                    'f'         =>  1,
+                    'fr'        =>  1,
+                    'fri'       =>  1,
+                    'friday'    =>  1,
+                    'fridays'   =>  1,
+                    's'         =>  2,
+                    'sa'        =>  2,
+                    'sat'       =>  2,
+                    'saturday'  =>  2,
+                    'saturdays' =>  2,
+                    'd'         =>  3,
+                    'su'        =>  3,
+                    'sun'       =>  3,
+                    'sunday'    =>  3,
+                    'sundays'   =>  3,
+                    'today'     => -7,
+                    'tom'       => -6,
+                    'tomorrow'  => -6,
+                    'yesterday' => -8
+            }
+        ],
+        ['parseTimeTZHash',0,0,{
+                    'ACDT' =>    10.5,
+                    'ACIT' =>    8,
+                    'ACST' =>    9.5,
+                    'ACT'  =>    -5,
+                    'ADT'  =>    4,
+                    'AEDT' =>    11,
+                    'AEST' =>    10,
+                    'AFT'  =>    4.5,
+                    'AKDT' =>    -8,
+                    'AKST' =>    -9,
+                    'AMDT' =>    5,
+                    'AMST' =>    4,
+                    'AMT'  =>    -4,
+                    'ANAST'=>    13,
+                    'ANAT' =>    12,
+                    'ART'  =>    -3,
+                    'ARDT' =>    -2,
+                    'AST'  =>    3,
+                    'ACWDT'=>    9.75,
+                    'ACWST'=>    8.75,
+                    'AZODT'=>    0,
+                    'AZOST'=>    -1,
+                    'AZST' =>    5,
+                    'AZT'  =>    4,
+                    'BIT'  =>    -12,
+                    'BDT'  =>    6,
+                    'BIOT' =>    6,
+                    'BOT'  =>    -4,
+                    'BRST' =>    -2,
+                    'BRT'  =>    -3,
+                    'BST'  =>    1,
+                    'BTT'  =>    6,
+                    'CAST' =>    5,
+                    'CAT'  =>    2,
+                    'CCT'  =>    6.5,
+                    'CDT'  =>    -5,
+                    'CEDT' =>    2,
+                    'CET'  =>    1,
+                    'CGST' =>    -2,
+                    'CGT'  =>    -3,
+                    'CHADT'=>    13.75,
+                    'CHAST'=>    12.75,
+                    'CHST' =>    10,
+                    'CIST' =>    -8,
+                    'CKT'  =>    -10,
+                    'CLDT' =>    -3,
+                    'CLST' =>    -4,
+                    'COT'  =>    -5,
+                    'CST'  =>    -6,
+                    'CVT'  =>    -1,
+                    'CXT'  =>    7,
+                    'DAVT' =>    7,
+                    'DTAT' =>    10,
+                    'EADT' =>    -5,
+                    'EAST' =>    -6,
+                    'EAT'  =>    3,
+                    'ECT'  =>    -5,
+                    'EDT'  =>    -4,
+                    'EEST' =>    3,
+                    'EET'  =>    2,
+                    'EGT'  =>    -1,
+                    'EGST' =>    0,
+                    'EKST' =>    6,
+                    'EST'  =>    -5,
+                    'FJT'  =>    12,
+                    'FKDT' =>    -3,
+                    'FKST' =>    -4,
+                    'FNT'  =>    -2,
+                    'GALT' =>    -6,
+                    'GET'  =>    4,
+                    'GFT'  =>    -3,
+                    'GILT' =>    12,
+                    'GIT'  =>    -9,
+                    'GMT'  =>    0,
+                    'GST'  =>    4,
+                    'GYT'  =>    -4,
+                    'HADT' =>    -9,
+                    'HAST' =>    -10,
+                    'HKST' =>    8,
+                    'HMT'  =>    5,
+                    'ICT'  =>    7,
+                    'IDT'  =>    3,
+                    'IRKST'=>    9,
+                    'IRKT' =>    8,
+                    'IRDT' =>    4.5,
+                    'IRST' =>    3.5,
+                    'IST'  =>    5.5,
+                    'JFDT' =>    -3,
+                    'JFST' =>    -4,
+                    'JST'  =>    9,
+                    'KGST' =>    6,
+                    'KGT'  =>    5,
+                    'KRAST'=>    8,
+                    'KRAT' =>    7,
+                    'KOST' =>    11,
+                    'KOVT' =>    7,
+                    'KOVST'=>    8,
+                    'KST'  =>    9,
+                    'LHDT' =>    11,
+                    'LHST' =>    10.5,
+                    'LINT' =>    14,
+                    'LKT'  =>    6,
+                    'MAGST'=>    12,
+                    'MAGT' =>    11,
+                    'MIT'  =>    -9.5,
+                    'MHT'  =>    12,
+                    'MAWT' =>    6,
+                    'MMT'  =>    6.5,
+                    'MNT'  =>    8,
+                    'MNST' =>    9,
+                    'MSDT' =>    4,
+                    'MSST' =>    3,
+                    'MDT'  =>    -6,
+                    'MST'  =>    -7,
+                    'MUT'  =>    4,
+                    'MVT'  =>    5,
+                    'MYT'  =>    8,
+                    'NCT'  =>    11,
+                    'NDT'  =>    -2.5,
+                    'NFT'  =>    11.5,
+                    'NPT'  =>    5.75,
+                    'NRT'  =>    12,
+                    'NOVST'=>    7,
+                    'NOVT' =>    6,
+                    'NST'  =>    -3.5,
+                    'NUT'  =>    -11,
+                    'NZDT' =>    13,
+                    'NZST' =>    12,
+                    'OMSST'=>    7,
+                    'OMST' =>    6,
+                    'PDT'  =>    -7,
+                    'PETST'=>    13,
+                    'PET'  =>    -5,
+                    'PETT' =>    12,
+                    'PGT'  =>    10,
+                    'PHOT' =>    13,
+                    'PHT'  =>    8,
+                    'PKT'  =>    5,
+                    'PMDT' =>    -2,
+                    'PMST' =>    -3,
+                    'PONT' =>    11,
+                    'PST'  =>    -8,
+                    'PWT'  =>    9,
+                    'PYST' =>    -3,
+                    'PYT'  =>    -4,
+                    'RET'  =>    4,
+                    'ROTT' =>    -3,
+                    'SAMST'=>    5,
+                    'SAMT' =>    4,
+                    'SAST' =>    2,
+                    'SBT'  =>    11,
+                    'SCDT' =>    13,
+                    'SCST' =>    12,
+                    'SCT'  =>    4,
+                    'SEST' =>    1,
+                    'SGT'  =>    8,
+                    'SIT'  =>    8,
+                    'SLT'  =>    0,
+                    'SRT'  =>    -3,
+                    'SST'  =>    -11,
+                    'SYST' =>    3,
+                    'SYT'  =>    2,
+                    'TAHT' =>    -10,
+                    'TFT'  =>    5,
+                    'TJT'  =>    5,
+                    'TKT'  =>    -10,
+                    'TMT'  =>    5,
+                    'TOT'  =>    13,
+                    'TPT'  =>    9,
+                    'TRUT' =>    10,
+                    'TVT'  =>    12,
+                    'TWT'  =>    8,
+                    'UTC'  =>    0,
+                    'UYT'  =>    -3,
+                    'UYST' =>    -2,
+                    'UZT'  =>    5,
+                    'VLAST'=>    11,
+                    'VLAT' =>    10,
+                    'VOST' =>    6,
+                    'VST'  =>    -4.5,
+                    'VUT'  =>    11,
+                    'WAST' =>    2,
+                    'WAT'  =>    1,
+                    'WEST' =>    1,
+                    'WET'  =>    0,
+                    'WFT'  =>    12,
+                    'WKST' =>    5,
+                    'WDT'  =>    9,
+                    'WST'  =>    8,
+                    'WIB'  =>    7,
+                    'WITA' =>    8,
+                    'WIT'  =>    9,
+                    'YAKST'=>    10,
+                    'YAKT' =>    9,
+                    'YAPT' =>    10,
+                    'YEKST'=>    6,
+                    'YEKT' =>    5,
+                    'Z'    =>    0,
+                    'Y'    =>    -12,
+                    'X'    =>    -11,
+                    'W'    =>    -10,
+                    'V'    =>    -9,
+                    'U'    =>    -8,
+                    'T'    =>    -7,
+                    'S'    =>    -6,
+                    'R'    =>    -5,
+                    'Q'    =>    -4,
+                    'P'    =>    -3,
+                    'O'    =>    -2,
+                    'N'    =>    -1,
+                    'A'    =>    1,
+                    'B'    =>    2,
+                    'C'    =>    3,
+                    'D'    =>    4,
+                    'E'    =>    5,
+                    'F'    =>    6,
+                    'G'    =>    7,
+                    'H'    =>    8,
+                    'I'    =>    9,
+                    'K'    =>    10,
+                    'L'    =>    11,
+                    'M'    =>    12,
+                    'ZST'  =>    -8,
+                    'ZDT'  =>    -7,
+                    'PI'   =>   +3.14
+            }
+        ]
+
+    );
+}
+
+# Called with help
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    my %commands = (
+        '' => 'The Timezone module handles converting timezones and displaying the time in the current timezone.  Timezones can be in GMT offsets or abbreviations',
+        'convert'=> 'Converts timezones.  Syntax: "convert TZ to TZ" or "convert day time TZ to TZ" eg "convert Monday 12:30 PM GMT to PDT',
+        'timezone'=>'Displays the known GMT offset for a given timezone abbreviation or the list of timezones for a given offset',
+        'now' => 'Displays the current time',
+    );
+    return \%commands;
+}
+
+
+
+# Parses commands.
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    my $passFlag = 0;
+    my $timepattern = qr/[^\W\d_]*?\s*\d?\d(?:\:\d\d)?\s*(?:AM?|PM?|M(?:ID)?|N(?:OON)?)?/i;
+    my $tzpattern = qr/(?:\s+((?:GMT|UTC)?\s*[+-]?\d\d?\.?\d?\d?|[^\W\d_]+))?/i;
+    if($message =~ /^timezone$tzpattern\s*$/osi) {
+        $self->displayTimezone($event, ($1//0));
+    }elsif($message =~ /^\s*?(?:convert|translate)?\s+($timepattern)$tzpattern\s+(?:in|at|to)$tzpattern\s*$/osix){
+        $self->convertTime($event,$1,($2//0),($3//0)) or $self->Report($event, 27);
+    } elsif($message =~ /^\s*?now(?:in\s+)?$tzpattern\s*$/osix){
+        $self->nowTime($event,$1//0) or $self->Report($event, 27);
+    } else {
+        return $self->SUPER::Told(@_);
+    }
+    return 0; # dealt with it...
+}
+
+
+# Reports contents of @output to channel or caller.
+sub Report {
+    my $self = shift;
+    my ($event, $status) = @_;
+    $self->say($event, $event->{'from'}.": ".$self->{'statements'}{$status});
+}
+
+
+sub displayTimezone {
+    my $self = shift;
+    my ($event, $tzT) = @_;
+    if ($tzT =~ /^(?:GMT|UTC)?\s*[+-]?\d\d?\.?\d?\d?/){
+        $tzT =~ s/^(?:GMT|UTC)?\s*//;
+        if($tzT >= -12 && $tzT <= 14){
+            my %reverseTZhash = ();  #yuck, hopefully this doesn't happen often.
+            while (my ($abbr,$zone) = each(%{$self->{'parseTimeTZHash'}})) {
+                $zone *= 1; ##integerify
+                push(@{$reverseTZhash{$zone}}, $abbr);
+            }
+            $tzT *= 1;
+            my $tzTT = ($tzT == int($tzT))?sprintf("%+.2i",$tzT):sprintf("%+.2f",$tzT);
+            $tzTT = '' if ($tzT == 0);
+            if(exists($reverseTZhash{$tzT})){
+                $self->say($event,$event->{'from'}.': '
+                        .$self->{'statements'}{'37'}.'GMT'.$tzTT.": "
+                        .join(', ',sort{length($a)<=>length($b)||$a cmp $b}
+                                                                    @{$reverseTZhash{$tzT}}));
+            } else {
+                $self->say($event,$self->{'statements'}{'29'}.'GMT'.$tzTT);
+            }
+        } else {
+            (abs($tzT)!=42)?$self->Report($event,39):$self->Report($event,'42.1');
+        }
+    } else {
+        $tzT = uc($tzT);
+        if (exists($self->{'parseTimeTZHash'}{$tzT})){
+            my $zone = $self->{'parseTimeTZHash'}{$tzT};
+            my $tzTT = ($zone == int($zone))?sprintf("%+.2i",$zone):sprintf("%+.2f",$zone);
+            $tzTT = '' if ($zone == 0);
+            my $file_name = dirname($0) . '/BotModules/'.$self->{'tznamefile'};
+            $file_name =~ /^(.*)$/;
+            $file_name = $1;
+            if(open(FILE,"< $file_name")){
+                my %tznamehash = ();
+                while (my $line = <FILE>){
+                    chomp ($line);
+                    my @parts = split(',',$line);
+                    next unless $parts[0] && $parts[1];
+                    $tznamehash{uc(shift(@parts))} = \@parts;
+                }
+                my $tzname = shift (@{$tznamehash{$tzT}});
+                my $output = $event->{'from'}.': '.$self->{'statements'}{'38'}.$tzT.' is '
+                            .$tzname.' (GMT'.$tzTT.').';
+                $self->debug("$output");
+                foreach my $tzalt (@{$tznamehash{$tzT}}){
+                    next unless $tzalt;
+                    $tzalt = uc($tzalt);
+                    my $tzaltname = $tznamehash{$tzalt}[0];
+                    $output .= " For $tzaltname use $tzalt.";
+                }
+                $self->say($event,$output);
+            } else {
+                $self->debug("Could not open/create $file_name for reading: $!");
+                $self->say($event,$event->{'from'}.': '
+                            .$self->{'statements'}{'38'}.uc($tzT).' is GMT'.$tzTT);
+            }
+        } else {
+            $self->Report($event,1,27);
+        }
+    }
+}
+
+
+sub wordifyTime {
+    my $self = shift;
+    my ($event,$time,$short) = @_;
+    my ($min,$hour,$wday) = (gmtime($time))[1,2,6];
+    my $ampm = ($hour<12?'AM':'PM');
+    my $hourT = $hour%12||'12';
+    return qw( Sun Mon Tue Wed Thu Fri Sat)[$wday]." $hourT:".sprintf("%02d",$min).$ampm if !$short||$min!=0;
+    return qw( Su M T W Th F S )[$wday]." $hourT".lc($ampm);
+}
+
+
+sub parseTime {
+    my $self = shift;
+    my ($stringtime) = @_;
+    my ($day,$hour,$min,$ampm)  = $stringtime =~ /([^\W\d_]*)\s*(\d\d?)((?:\:\d\d)?)\s*((?:am?|pm?|mi?d?|no?o?n?)?)/iso;
+    $min =~ s/:// if ($min||($min = ":00"));
+    # $self->debug("$stringtime: $day, $hour : $min, $ampm");
+    return -7 if (!defined($day)||$day eq '');
+    $day = $self->{'parseTimeWeekHash'}{lc($day)} or return -1;
+    return $day if ($day < -3);
+    if (defined($ampm)){
+        $hour += 12 if ($hour<12 && $ampm =~ /^(p|n)/i);
+        $hour = 0 if ($hour == 12 && $ampm =~ /^(a|m)/i);
+    }
+    $hour = ($hour == 24?0:$hour);
+    $min = $min||0;
+    return -1 if $hour > 24;
+    return -1 if $min > 59;
+    return ($day * SECS_IN_DAY + $hour*3600 + $min*60) % SECS_IN_WEEK;
+}
+
+sub transTZ {
+    my $self = shift;
+    my ($event,$tzT) = @_;
+    my $output = 0;
+    if ($tzT =~ /^(?:GMT|UTC)?\s*[+-]?\d\d?\.?\d?\d?/){
+        $tzT =~ s/^(?:GMT|UTC)?\s*//;
+        if (abs($tzT) == 42){
+            $self->readQuote($event);
+            return ($tzT+12)%24-12;
+        }
+        return undef unless $tzT >= -12 && $tzT <= 14;
+        $output = $tzT + 0;
+    } else {
+        $self->checkDST($event,uc($tzT));
+        $output = $self->{'parseTimeTZHash'}{uc($tzT)};
+    }
+    # $self->debug("parseTimeTZ result: $output");
+    return $output;
+}
+
+sub checkDST {
+    my $self = shift;
+    my ($event, $tzT) = @_;
+    return if ($tzT !~ /^([ECMPZ])([DS])T$/io);
+    if (!($2 eq 'S') == !((localtime($event->{'time'}))[8])){
+        my $newtzT = $1.(($2 eq 'S')?'D':'S').'T';
+        $self->say($event,"$event->{'from'}: Giving you $tzT but do you mean $newtzT?");
+    }
+}
+
+sub convertTime {
+    my $self = shift;
+    my ($event,$timeT,$intzT,$outtzT) = @_;
+    my $intz = $self->transTZ($event,$intzT)//return 0;
+    my $outtz = $self->transTZ($event,$outtzT)//return 0;
+    my $time = $self->parseTime($timeT);
+    if ($time < 0) { # handling special cases!
+        if ($time == -1){
+            $self->say($event,"I don't understand.");
+            return 1;
+        }
+        $timeT =~ s/^[^\W\d_]+?\s+/ /;
+        my $newday = (gmtime(sprintf("%.0f",($event->{'time'} + $intz*3600 + $time * SECS_IN_DAY))))[6];
+        $time = $self->parseTime(qw(Su M T W Th F S)[$newday].$timeT);
+    }
+    if ($intzT =~ /^(?:GMT|UTC)?\s*[+-]?\d\d?\.?\d?\d?/){
+        $intzT = ($intz?'GMT '.($intz>=0?'+'.$intz:'-'.-$intz):'GMT');
+    } else {
+        $intzT = uc($intzT);
+    }
+    if ($outtzT =~ /^(?:GMT|UTC)?\s*[+-]?\d\d?\.?\d?\d?/){
+        $outtzT = ($outtz?'GMT '.($outtz>=0?'+'.$outtz:'-'.-$outtz):'GMT');
+    } else {
+        $outtzT = uc($outtzT);
+    }
+    my $timestring = $self->wordifyTime($event,sprintf("%.0f",($time - $intz*3600 + $outtz*3600)),0);
+    $self->say($event,$event->{'from'}.': '.$self->wordifyTime($event,$time,0).' '.$intzT.' is '.$timestring.' '.$outtzT);
+    return 1;
+}
+
+sub nowTime {
+    my $self = shift;
+    my ($event, $tzT) = @_;
+    my $tz = $self->transTZ($event,$tzT)//return 0;
+    if ($tzT =~ /^(?:GMT|UTC)?\s*[+-]?\d\d?\.?\d?\d?/){
+        $tzT = ($tz?'GMT '.($tz>=0?'+'.$tz:'-'.-$tz):'GMT');
+    } else {
+        $tzT = uc($tzT);
+    }
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday) = (gmtime(sprintf("%.0f",(time + $tz*3600))))[0..6];
+    my @marray = qw(January February March April May June July August September October November December);
+    my @darray = qw(Sunday Monday Tuesday Wednesday Thursday Friday Saturday);
+    my $ampm = ($hour<12?'AM':'PM');
+    my $hourT = $hour%12||'12';
+    $year += 1900;
+    my $minT = sprintf("%02d",$min);
+    my $secT = sprintf("%02d",$sec);
+    $self->say($event,$event->{'from'}.": It is now $hourT:$minT:$secT $ampm on $darray[$wday], $marray[$mon] $mday, $year $tzT.");
+    return 1;
+}
+
+sub readQuote {
+    my $self = shift;
+    my ($event) = @_;
+    my $file_name = dirname($0) . '/BotModules/'.$self->{'quotefile'};
+    $file_name =~ /^(.*)$/;
+    $file_name = $1;
+    open(FILE,"< $file_name") or $self->debug("Could not open/create $file_name for reading: $!");
+    my @h2g2 = ();
+    if(my @slurp = <FILE>){
+        foreach(@slurp){
+            chomp;
+            push (@h2g2,$_) if ($_ ne '');
+        }
+        $self->say($event,$h2g2[int(rand($#h2g2+1))]);
+    } else {
+        $self->Report($event,42);
+    }
+    close(FILE);
+}

@@ -1,0 +1,187 @@
+################################
+# Foxkeh Module             #
+################################
+
+#
+# Module simply checks the LiveChat status and reports it.
+#
+
+package BotModules::Foxkeh;
+use vars qw(@ISA);
+use Digest::MD5 qw(md5_hex);
+@ISA = qw(BotModules);
+1;
+
+# RegisterConfig - Called when initialised, should call registerVariables
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+        # [ name, save?, settable? ]
+        ['updateDelay', 1, 1, 120],
+		['maxUpdateFreq',1,1,30],
+        ['lastUpdate', 0, 0, 0],
+        ['openHash',0,0,''],
+        ['closeHash',0,0,''],
+		['statements',1,1,{
+			'0' => 'LiveChat is Closed.  Sleep well, Foxkeh!',
+			'1' => 'LiveChat is Open.  Foxkeh\'s ready for questions!',
+			'2' => 'Update of reference Foxkeh images complete.',
+			'3' => 'Foxkeh\'s acting funny.  I can\'t tell what he\'s up to.',
+			'4' => 'I can\'t seem to find Foxkeh right now, I think he\'s in hiding.',
+			}
+		],
+        ['lastStatus', 0,0, 4]
+    );
+}
+
+# Schedule - called when bot connects to a server, to install any schedulers
+# use $self->schedule($event, $delay, $times, $data)
+# where $times is 1 for a single event, -1 for recurring events,
+# and a +ve number for an event that occurs that many times.
+sub Schedule {
+    my $self = shift;
+    my ($event) = @_;
+    $self->schedule($event, \$self->{'updateDelay'}, -1, 'foxkehstatus');
+	$self->schedule($event, \$self->{'maxUpdateFreq'}, 1, 'foxkehupdate');
+    $self->SUPER::Schedule($event);
+}
+
+# Called with help
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    my %commands = (
+        '' => 'The Foxkeh module monitors LiveChat\'s Foxkeh.',
+        'status'=> 'Reports the current status of Foxkeh.',
+        'update'=> 'Updates the comparison images.'
+    );
+    return \%commands;
+}
+
+# Parses commands.
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    if ($message =~ /^\s*foxkeh(.*)$/osi) {
+		my $innermatch = $1;
+		$innermatch =~ /^\s*(\w*)\s*$/osi;
+        if ($1){
+            if (lc($1) eq 'update') {
+                $self->UpdateHashes($event, 1);
+            } elsif (lc($1) eq 'status') {
+				if ($event->{'time'} - $self->{'lastUpdate'} < $self->{'maxUpdateFreq'}){ # Being nice to the server.
+					$self->Report($event, 2, $self->{'lastStatus'});
+				} else {
+					$self->GetStatus($event, 1);
+				}
+            } else {
+                return $self->SUPER::Told(@_);
+            }
+        } else {
+            if ($event->{'time'} - $self->{'lastUpdate'} < $self->{'maxUpdateFreq'}){ # Being nice to the server.
+				$self->Report($event, 2, $self->{'lastStatus'});
+			} else {
+				$self->GetStatus($event, 1);
+			}
+        }
+    } else {
+		return $self->SUPER::Told(@_);
+	}
+    return 0; # dealt with it...
+}
+
+# Gets Foxkeh status
+sub GetStatus {
+    my $self = shift;
+    my ($event, $requested) = @_;
+    my $uri = 'https://chat-support.mozilla.com:9091/webchat/live?action=isAvailable&workgroup=support@workgroup.chat-support.mozilla.com';
+    $self->getURI($event, $uri, $requested, 0);
+}
+
+# Processes URI calls.  If $initialize > 0, calls are for assigning values to hashes.  If $initialize == 0, process.
+sub GotURI {
+    my $self = shift;
+    my ($event, $uri, $output, $requested, $initialize) = @_;
+    my $newstatus = $self->{'lastStatus'};
+    if ($output) {
+        if ($initialize == 2){
+                $self->{'openHash'}=md5_hex($output);
+                $self->getURI($event, 'http://cww.drapostles.org/foxkehclosed.png', $requested, 1);
+            } elsif ($initialize == 1) {
+                $self->{'closeHash'}=md5_hex($output);
+				$self->Report($event, $requested, 2);
+            } else {
+                my $now = $event->{'time'};
+                $self->{'lastUpdate'} = $now;
+                    if ($self->{'closeHash'} == md5_hex($output)){
+                        $newstatus = 0;
+                    } elsif ($self->{'openHash'} == md5_hex($output)){
+                        $newstatus = 1;
+                    } else {
+                        $newstatus = 3; # DO NOT auto update.  Will loop.
+                    }
+                if (!$requested && $self->{'lastStatus'} == $newstatus){
+                    # do nothing
+                } else {
+                    if ($self->{'lastStatus'} != $newstatus){
+						$self->{'lastStatus'} = $newstatus;
+						$self->Report($event, 0, $newstatus);
+					}
+					if ($requested){
+						$self->Report($event, $requested, $newstatus);
+					}
+                }
+            }
+    } else {
+        if ($requested) {
+            if(!$initialize){
+                $self->say($event, "$event->{'from'}: I can't access Foxkeh right now, sorry.");
+            } else {
+                $self->say($event, "$event->{'from'}: I can't access the reference images right now, sorry.  I'm using the old ones.");
+            }
+        }
+		if ($self->{'lastStatus'} != 4){
+			$self->{'lastStatus'} = 4;
+			$self->Report($event, 0, 4);
+		}		
+        $self->debug('failed to get data');
+    }
+}
+
+# Calls GetStatus each round.  (Passes if it can't handle it.)
+sub Scheduled {
+    my $self = shift;
+    my ($event, @data) = @_;
+    if (@data[0] eq 'foxkehstatus') {
+		$self->GetStatus($event, 0);
+	} elsif (@data[0] eq 'foxkehupdate') {
+		$self->UpdateHashes($event, 0);
+	} else {
+		$self->SUPER::Scheduled($event, @data);
+	}
+}
+
+# Reports contents of @output to channel or caller.
+sub Report {
+    my $self = shift;
+    my ($event, $requested, $status) = @_;
+	if ($requested == 1){
+        $self->say($event, $event->{'from'}.": ".$self->{'statements'}{$status});
+	} elsif ($requested == 2){
+		$self->say($event, $event->{'from'}.": Unless something changed in the last few seconds, ".$self->{'statements'}{$status});
+    } elsif ($status != 2) {
+		foreach (@{$self->{'channels'}}){
+			local $event->{'target'} = $_;
+			$self->say($event, "Foxkeh status update: ".$self->{'statements'}{$status});
+		}
+	}
+}
+
+
+# Updates the image hashes.
+sub UpdateHashes {
+    my $self = shift;
+    my ($event, $requested) = @_;
+    $self->getURI($event, 'http://cww.drapostles.org/foxkehopen.png', $requested, 2);
+}

@@ -1,0 +1,7 @@
+log/*
+spool/*
+*.dir
+*.pag
+config
+nohup.out
+mozbot.pl.cfg

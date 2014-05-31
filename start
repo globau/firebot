@@ -1,0 +1,4 @@
+#!/bin/sh
+cd /home/firebot/firebot
+>nohup.out
+/usr/bin/nohup ./mozbot.pl &
