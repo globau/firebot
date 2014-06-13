@@ -43,6 +43,7 @@ sub RegisterConfig {
     $self->registerVariables(
       # [ name, save?, settable? ]
         ['bugsURI', 1, 1, 'https://bugzilla.mozilla.org/'], 
+        ['bugsURIShort', 1, 1, 'https://bugzil.la/'],
         ['bugsDWIMQueryDefault', 1, 1, 'short_desc_type=substring&short_desc='], 
         ['bugsDWIMQueryChannelDefault', 1, 1, {}],
         ['bugsHistory', 0, 0, {}], 
@@ -222,6 +223,10 @@ sub CheckForBugs {
                 $skipURI = 0;
                 $rest = $2;
             } elsif ($rest =~ m/\Q$self->{'bugsURI'}\Eshow_bug.cgi\?id=([0-9]+)(?:[^0-9&](.*))?$/si) {
+                $bug = $1;
+                $skipURI = 1;
+                $rest = $2;
+            } elsif ($rest =~ m/\Q$self->{'bugsURIShort'}\E([0-9]+)(?:[^0-9&](.*))?$/si) {
                 $bug = $1;
                 $skipURI = 1;
                 $rest = $2;
@@ -512,7 +517,7 @@ sub GotURI {
         $self->say($event, "$preamble");
     }
 
-    my $bug_link = $skipURI ? "" : "$self->{'bugsURI'}show_bug.cgi?id=";
+    my $bug_link = $skipURI ? "" : "$self->{'bugsURIShort'}";
 
     # now send out the output
     foreach my $bug (@bugs) {
@@ -527,13 +532,16 @@ sub GotURI {
             # Maybe the list of columns to display could be a var, one day, after
             # installations from source before Dec 2001 are no longer supported,
             # or we can pass cookies
-            $self->say($event, "Bug $bug_link$bug->{'id'} " .
-                       substr($bug->{'severity'} || $bug->{'bug_severity'}, 0, 3) . ", " .
-                       $bug->{'priority'} . ", " .
-                       ($bug->{'target_milestone'} ? "$bug->{'target_milestone'}, " : "") .
-                       ($bug->{'owner'} || $bug->{'assigned_to'}) . ", " .
-                       substr($bug->{'status'} || $bug->{'bug_status'},  0, 4) .
-                       ($bug->{'resolution'} ? " " . $bug->{'resolution'} : "") . ", " .
+            my $bug_state = ($bug->{'status'} || $bug->{'bug_status'});
+            if ($bug_state eq 'RESOLVED' || $bug_state eq 'VERIFIED') {
+              $bug_state = $bug->{'resolution'};
+            }
+            my $owner = $bug->{'owner'} || $bug->{'assigned_to'};
+            if ($owner eq "nobody") { $owner = ""; }
+
+            $self->say($event,
+                       ($bug_link || "Bug ") . "$bug->{'id'} \N{U+2014} " .
+                       $bug_state . ($owner ? ", $owner" : "") . " \N{U+2014} " .
                        substr($bug->{'summary'} || $bug->{'short_desc'} || $bug->{'short_short_desc'}, 0, 100));
         } elsif ($bug->{'error'} eq 'NotFound') {
             unless($skipZaroo) {
