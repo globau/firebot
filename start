@@ -1,9 +1,9 @@
 #!/bin/sh
 P=`/sbin/pidof -x mozbot.pl`
 if [ -n "$P" ]; then
-    /usr/bin/pstree -p "$P"
     if [ "$1" != "-q" ]; then
         echo firebot is already running
+        /usr/bin/pstree -p "$P"
     fi
 else
     echo starting firebot
