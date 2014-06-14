@@ -3,7 +3,7 @@ cd /home/firebot/firebot
 echo "Shutdown::::glob::::BBL. Going down for a bit." > .cmd.log
 
 echo "Waiting for firebot to stop.."
-while [ -n "`pidof -x mozbot.pl`" ]; do
-    sleep 1
+while [ -n "`/sbin/pidof -x mozbot.pl`" ]; do
+    /bin/sleep 1
 done
 echo "Stopped"

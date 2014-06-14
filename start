@@ -1,4 +1,13 @@
 #!/bin/sh
-cd /home/firebot/firebot
->nohup.out
-/usr/bin/nohup ./mozbot.pl &
+P=`/sbin/pidof -x mozbot.pl`
+if [ -n "$P" ]; then
+    /usr/bin/pstree -p "$P"
+    if [ "$1" != "-q" ]; then
+        echo firebot is already running
+    fi
+else
+    echo starting firebot
+    cd /home/firebot/firebot
+    >nohup.out
+    /usr/bin/nohup ./mozbot.pl &
+fi
