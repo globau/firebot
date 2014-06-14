@@ -215,7 +215,6 @@ sub ReportDiffs {
     # items at a time...
 
     if (@output and @output < $self->{'maxInChannel'}) {
-        print "TEST RD OUTPUT\n";
         my %mutedChannels = ();
         if (defined($self->{'mutes'}->{$uri})) {
             %mutedChannels = map { lc($_) => 1 } split(/\s+/os, $self->{'mutes'}->{$uri});
