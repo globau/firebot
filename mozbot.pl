@@ -95,7 +95,6 @@ BEGIN { exit() if ((defined($ARGV[0])) and ($ARGV[0] eq '--abort')); }
 
 # pragmas
 use strict;
-use diagnostics;
 
 # chroot if requested
 my $CHROOT = 0;
@@ -965,7 +964,7 @@ sub toToChannel {
             return '';
         }
     }
-    return lc($channel); # if message was sent to one person only, this is it
+    return lc($channel || ''); # if message was sent to one person only, this is it
 }
 
 # XXX some code below calls this, on lines marked "hack hack hack". We
