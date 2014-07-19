@@ -4,6 +4,7 @@
 ######################################
 
 use strict;
+BEGIN { @AnyDBM_File::ISA = qw(DB_File GDBM_File NDBM_File) }
 use AnyDBM_File;
 use Fcntl;
 
@@ -41,7 +42,7 @@ sub use {
 
 sub dump {
     my %db;
-    tie(%db, 'AnyDBM_File', shift, O_RDONLY, 0666);
+    tie(%db, 'AnyDBM_File', shift, O_RDONLY, 0666) or die $!;
     while (my ($key, $val) = each %db) {
         chomp $val;
         print "$key => $val\n";
@@ -50,7 +51,7 @@ sub dump {
 
 sub import {
     my %db;
-    tie(%db, 'AnyDBM_File', shift, O_WRONLY|O_CREAT, 0666);
+    tie(%db, 'AnyDBM_File', shift, O_WRONLY|O_CREAT, 0666) or die $!;
     while (<STDIN>) {
         chomp;
         unless (m/\s*(.+?)\s+=(?:is=|are=)?>\s+(.+?)\s*$/o) {

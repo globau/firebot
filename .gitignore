@@ -5,3 +5,7 @@ spool/*
 config
 nohup.out
 mozbot.pl.cfg
+seen-times
+seen-states
+factoids-is
+factoids-are

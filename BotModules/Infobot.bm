@@ -8,6 +8,7 @@
 package BotModules::Infobot;
 use vars qw(@ISA);
 @ISA = qw(BotModules);
+BEGIN { @AnyDBM_File::ISA = qw(DB_File GDBM_File NDBM_File) }
 use AnyDBM_File;
 use Fcntl;
 1;
@@ -19,8 +20,8 @@ use Fcntl;
 # soon as the thing it is tying goes out of scope (even if the variable
 # in question still has active references) it loses its magic.
 our $factoids = {'is' => {}, 'are' => {}};
-tie(%{$factoids->{'is'}}, 'AnyDBM_File', 'factoids-is', O_RDWR|O_CREAT, 0666);
-tie(%{$factoids->{'are'}}, 'AnyDBM_File', 'factoids-are', O_RDWR|O_CREAT, 0666);
+tie(%{$factoids->{'is'}}, 'AnyDBM_File', 'factoids-is', O_RDWR|O_CREAT, 0666) or die $!;
+tie(%{$factoids->{'are'}}, 'AnyDBM_File', 'factoids-are', O_RDWR|O_CREAT, 0666) or die $!;
 
 sub Help {
     my $self = shift;
