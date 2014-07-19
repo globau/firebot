@@ -557,8 +557,13 @@ my $bug_info = parse_mail(\@mail_array);
 
 if (defined $bug_info) {
     my $log_lines = generate_log($bug_info);
-    # If we got an email with just a comment, $log_lines will be empty.
-    append_log($log_lines) if $log_lines;
+    if ($log_lines) {
+        # If we got an email with just a comment, $log_lines will be empty.
+        # sleep for 2 seconds to avoid bugzilla master/slave database
+        # replication race conditions
+        sleep(2);
+        append_log($log_lines);
+    }
 }
 
 debug_print("All done!");
