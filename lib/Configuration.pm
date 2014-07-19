@@ -184,7 +184,7 @@ sub Ensure {
                 }
             }
         } elsif (ref($$_[1]) eq 'ARRAY') {
-            unless (defined(@{$$_[1]})) {
+            unless (@{$$_[1]}) {
                 if (-t) {
                     print $$_[0]. " (enter a blank line to finish)\n";
                     my $input;
