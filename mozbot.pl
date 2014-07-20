@@ -1403,7 +1403,7 @@ sub debug {
         if ($LOGGING) {
             my $file = $LOGFILEPREFIX . '-' . DateTime->now->ymd('') . '.log';
             if (open(LOG, ">>$file")) {
-                print LOG logdate() . " $line\n";
+                print LOG encode_utf8(logdate() . " $line\n");
                 close(LOG);
             } else {
                 print logdate() . " [not logged, $!]\n";
