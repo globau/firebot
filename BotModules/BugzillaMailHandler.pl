@@ -67,8 +67,8 @@ use constant BREAKING_CHARACTERS => (' ',',','-');
 
 # The maximum width, in characters, of each field of the "diffs" table.
 use constant WIDTH_WHAT    => 19;
-use constant WIDTH_REMOVED => 28;
-use constant WIDTH_ADDED   => 28;
+use constant WIDTH_REMOVED => 27;
+use constant WIDTH_ADDED   => 27;
 
 # Our one command-line argument.
 #our $debug = $ARGV[0] && $ARGV[0] eq "-d";
