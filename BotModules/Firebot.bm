@@ -46,10 +46,17 @@ sub Help {
 sub Heard {
     my $self = shift;
     my ($event, $message) = @_;
+
+    # evidently #firefox gets a lot of italian pirates
+    return 1 unless $event->{channel} eq '#firefox';
+
     if ($message =~/^!list$/i || $message =~/^!lista$/i || $message =~/^!search$/i) {
-        #$self->say($event, "$event->{'from'}: You suck. Go away.");
-        $self->kick($event,$event->{'channel'}, $event->{'from'}, "Please help localise Firefox! - http://www.mozillaitalia.it/home/come-iniziare/"); #Kick the User.
-        #$self->kick($event,$event->{'channel'}, $event->{'from'}, "You Suck. Go away."); #Kick the User.
+        $self->kick(
+            $event,
+            $event->{channel},
+            $event->{from},
+            "Please help localise Firefox! - http://www.mozillaitalia.it/home/come-iniziare/"
+        ); #Kick the User.
     }
     return 0; # dealt with it...
 }
@@ -58,11 +65,7 @@ sub Told {
     my $self = shift;
     my ($event, $message) = @_;
 
-    #print "Debug: $message\n";
-
-    if ($message =~/^!list$/i) {
-        $self->say($event, "$event->{'from'}: You suck. Go away.");
-    } elsif (($message =~ /^admin/i)) {
+    if (($message =~ /^admin/i)) {
 		$self->say($event, "$event->{'from'}: My admin is glob, reachable at 'byron\@glob.uno'. Bugs about me go here: https://bugzilla.mozilla.org/enter_bug.cgi?product=Webtools&component=Mozbot");
     } elsif (($message =~ /(who|what) is.*$event->{nick}/i) || ($message =~ /(who|what) are you/i) || ($message =~ /^\s*firebot[?\s]*$/osi)) {
         $self->say($event, "$event->{'from'}: I'm $event->{nick}, I provide Bug Updates (and much more) for Firefox and the rest of the Mozilla world. :-) I'm maintained by glob and you can find out more about me here, https://wiki.mozilla.org/Firebot");
