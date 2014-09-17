@@ -9,9 +9,10 @@ package BotModules::Bugzilla;
 use vars qw(@ISA);
 @ISA = qw(BotModules);
 
-use XML::LibXML;
 use Fcntl qw(:DEFAULT :flock);
 use File::Basename;
+use JSON;
+use XML::LibXML;
 
 # For parsing bugmail.log records. Must be the same as 
 # FIELD_SEPARATOR in bugmail.pl.
@@ -172,7 +173,6 @@ sub Told {
                       $/osix) {
         my $target = $event->{'target'};
         my $bug = $1;
-        # Single bugs use xml.cgi, because then we get error messages
         if ($bug =~ m/^\d+$/) {
             $self->FetchBug($event, $bug, 'bug', {'sayAlways' => 1});
         } else {
@@ -294,6 +294,7 @@ sub FetchBug {
     my $sayAlways = exists($params->{'sayAlways'}) ? $params->{'sayAlways'} :  0;
     my $uri;
     my $type;
+    my $extra;
     my @bugs = split(' ', $bugParams);
     my @ids = ();
     foreach my $bug (@bugs) {
@@ -303,8 +304,13 @@ sub FetchBug {
         }
     }
     return unless @ids;
-    if ($subtype eq 'bug') {
-        # Code taken from Bugzilla's xml.cgi
+    # use REST for the most common single-bug case
+    if ($subtype eq 'bug' && scalar(@ids) == 1) {
+        # include just those fields with GotURI uses
+        $extra = $ids[0]; # rest error messages don't echo the requested bug id
+        $uri = "$self->{bugsURI}rest/bug/$extra?include_fields=id,status,resolution,assigned_to.email,summary";
+        $type = 'rest';
+    } elsif ($subtype eq 'bug') {
         $uri = "$self->{'bugsURI'}show_bug.cgi?ctype=xml&excludefield=long_desc&excludefield=attachmentdata&excludefield=cc".join('', map { $_ = "&id=" . $_ } @ids);
         $type = 'xml';
     } elsif ($subtype eq 'dwim') {
@@ -320,16 +326,15 @@ sub FetchBug {
         $uri = "$self->{'bugsURI'}buglist.cgi?format=rdf&bug_id=".join(',',@ids);
         $type = 'buglist';
     }
-    $self->getURI($event, $uri, $type, $subtype, $skipURI, $skipZaroo);
+    $self->getURI($event, $uri, $type, $subtype, $skipURI, $skipZaroo, $extra);
 }
 
 sub GotURI {
     my $self = shift;
-    my ($event, $uri, $output, $type, $subtype, $skipURI, $skipZaroo) = @_;
+    my ($event, $uri, $output, $type, $subtype, $skipURI, $skipZaroo, $extra) = @_;
 
     my @bugs;
 
-    # Bugzilla really needs a LIMIT option
     my $maxRes;
     if ($event->{'channel'}) {
         $maxRes = 5;
@@ -450,6 +455,24 @@ sub GotURI {
             }
             push @bugs, \%bug;
         }
+    } elsif ($type eq 'rest') {
+        my $response = decode_json($output);
+        my $bug;
+        if (exists $response->{error}) {
+            if ($response->{code} == 101) {
+                $bug->{error} = 'NotFound';
+            } elsif ($response->{code} == 102) {
+                $bug->{error} = 'NotPermitted';
+            } else {
+                $bug->{error} = $response->{message};
+            }
+            $bug->{id} = $extra;
+        } else {
+            $bug = $response->{bugs}->[0];
+        }
+        push @bugs, $bug;
+        $bugCount = 1;
+
     } elsif ($type eq 'rdf') {
         my $parser = XML::LibXML->new();
         my $tree = $parser->parse_string($output);

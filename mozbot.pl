@@ -1941,7 +1941,19 @@ sub registerDataHandle {
 sub getURI {
     my $self = shift;
     my ($event, $uri, @data) = @_;
-    $self->spawnChild($event, 'wget', ['--quiet', '--passive', '--no-check-certificate', '--user-agent="Mozilla/5.0 (compatible; mozbot)"',  '--output-document=-', $uri], 'URI', [$uri, @data]);
+    $self->spawnChild(
+        $event,
+        'curl', [
+            '--silent',
+            '--insecure',
+            '--max-time', '180',
+            '--output', '-',
+            '--user-agent', 'Mozilla/5.0 (compatible; mozbot)',
+            $uri,
+        ],
+        'URI',
+        [ $uri, @data ]
+    );
 }
 
 # returns a reference to a module -- DO NOT STORE THIS REFERENCE!!!
