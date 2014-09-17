@@ -71,8 +71,11 @@
 # XXX fix the "hack hack hack" bits to be better.
 
 
-# These bits are firebot-specific, for running him on firebot.glob.uno
-chdir('/home/firebot/firebot');
+BEGIN {
+    use FindBin '$RealBin';
+    $RealBin =~ /^(.+)$/;
+    chdir($1);
+}
 $ENV{'PATH'} = '/usr/bin';
 
 ################################
