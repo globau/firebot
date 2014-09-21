@@ -1,4 +1,5 @@
 #!/bin/sh
+pushd `dirname $0`/.. >/dev/null
 P=`/sbin/pidof -x mozbot.pl`
 if [ -n "$P" ]; then
     if [ "$1" != "-q" ]; then
@@ -7,7 +8,6 @@ if [ -n "$P" ]; then
     fi
 else
     echo starting firebot
-    cd /home/firebot/firebot
     >nohup.out
     /usr/bin/nohup ./mozbot.pl &
 fi

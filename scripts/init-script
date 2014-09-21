@@ -9,15 +9,18 @@
 # Description:       firebot, irc bot for irc.mozilla.org
 ### END INIT INFO
 
+pushd `dirname $0`/.. >/dev/null
+BOT_PATH=`pwd`
+
 case "$1" in
     start)
         echo -n "Starting firebot "
-        su -c /home/firebot/firebot/start firebot
+        su -c "$BOT_PATH/scripts/start" firebot
         pidof -x mozbot.pl
         ;;
     stop)
         echo "Shutting down firebot "
-        su -c /home/firebot/firebot/stop firebot
+        su -c "$BOT_PATH/scripts/stop" firebot
         sleep 10
         killall -u firebot
         ;;
@@ -27,10 +30,10 @@ case "$1" in
         ;;
     reload)
         echo -n "Reloading configuration "
-        su -c /home/firebot/firebot/reload firebot
+        su -c "$BOT_PATH/scripts/reload" firebot
         ;;
     status)
-        /home/firebot/firebot/status
+        "$BOT_PATH/scripts/status"
         ;;
     *)
         echo "Usage: $0 {start|stop|status|restart|reload}"

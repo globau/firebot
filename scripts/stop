@@ -1,5 +1,5 @@
 #!/bin/sh
-cd /home/firebot/firebot
+pushd `dirname $0`/.. >/dev/null
 echo "Shutdown::::glob::::BBL. Going down for a bit." > .cmd.log
 
 echo "Waiting for firebot to stop.."

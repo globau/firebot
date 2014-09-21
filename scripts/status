@@ -1,0 +1,10 @@
+#!/bin/sh
+pushd `dirname $0`/.. >/dev/null
+P=`/sbin/pidof -x mozbot.pl`
+if [ -n "$P" ]; then
+    for BOT_PID in `echo "$P" | tr " " "\n"`; do
+        /usr/bin/pstree -p "$BOT_PID"
+    done
+else
+    echo firebot is not running
+fi

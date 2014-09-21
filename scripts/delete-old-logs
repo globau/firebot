@@ -7,7 +7,7 @@ use DateTime;
 use FindBin qw($RealBin);
 
 my $cutoff = DateTime->now->add(days => -5)->ymd('');
-foreach my $file (glob("$RealBin/log/*.log")) {
+foreach my $file (glob("$RealBin/../log/*.log")) {
     next unless $file =~ /-(\d+)\.log$/;
     my $date = $1;
     next if $date >= $cutoff;

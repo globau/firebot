@@ -1,0 +1,63 @@
+#!/usr/bin/perl
+use strict;
+use warnings FATAL => 'all';
+use autodie;
+
+use FindBin '$RealBin';
+use File::Slurp;
+use Net::IRC;
+
+my %channels =
+    map { lc($_) => 0 }
+    map { /^channels=(#.+)/; $1 }
+    grep { /^channels=/ }
+    read_file("$RealBin/../mozbot.pl.cfg");
+
+my $irc = Net::IRC->new();
+$irc->debug(0);
+my $conn = $irc->newconn(
+    Nick    => 'listbot',
+    Server  => 'irc.mozilla.org',
+);
+
+$conn->add_handler(
+    [ 376, 422 ], # MOTD
+    sub {
+        my ($self) = @_;
+        $self->sl('LIST');
+    }
+);
+$conn->add_handler(
+    [ 322 ], # LIST line
+    sub {
+        my ($self, $event) = @_;
+        my (undef, $channel, $count) = $event->args;
+        $channel = lc($channel);
+        $channels{$channel} = $count if exists $channels{$channel};
+    }
+);
+$conn->add_handler(
+    [ 323 ], # LIST end
+    sub {
+        my ($self) = @_;
+        $self->quit();
+
+        my @channels = sort {
+            $channels{$b} <=> $channels{$a}
+            || $a cmp $b
+        } keys %channels;
+        foreach my $channel (@channels) {
+            my $count = $channels{$channel};
+            next if $count > 5;
+            printf "%s %s\n", ($count ? $count : '?'), $channel;
+        }
+    }
+);
+
+$SIG{__DIE__} = sub {
+    my ($error) = @_;
+    exit if $error =~ /No active connections left/;
+    die $error;
+};
+
+$irc->start();

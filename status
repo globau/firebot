@@ -1,7 +1,0 @@
-#!/bin/sh
-P=`/sbin/pidof -x mozbot.pl`
-if [ -n "$P" ]; then
-    /usr/bin/pstree -p "$P"
-else
-    echo firebot is not running
-fi
