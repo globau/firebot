@@ -1510,14 +1510,14 @@ sub LoadModule {
     # sanitize the name
     $name =~ s/[^-a-zA-Z0-9]/-/gos;
     # check the module is not already loaded
-    foreach (@modules) {
-        if ($_->{'_name'} eq $name) {
+    foreach my $mod (@modules) {
+        if ($mod->{'_name'} eq $name) {
             return "Failed [0]: Module already loaded. Don't forget to enable it in the various channels (vars $name channels '+#channelname').";
         }
     }
     # read the module in from a file
     my $filename = "./BotModules/$name.bm"; # bm = bot module
-    my $result = open(my $file, "< $filename");
+    my $result = open(my $file, '<', $filename);
     if ($result) {
         my $code = do {
             local $/ = undef; # enable "slurp" mode
@@ -1574,15 +1574,15 @@ sub UnloadModule {
     # remove the reference from @modules
     my @newmodules;
     my @newmodulenames;
-    foreach (@modules) {
-        if ($name eq $_->{'_name'}) {
-            if ($_->{'_static'}) {
+    foreach my $mod (@modules) {
+        if ($name eq $mod->{'_name'}) {
+            if ($mod->{'_static'}) {
                 return 'Cannot unload this module, it is built in.';
             }
-            $_->unload();
+           $mod->unload();
         } else {
-            push(@newmodules, $_);
-            push(@newmodulenames, $_->{'_name'});
+            push(@newmodules, $mod);
+            push(@newmodulenames, $mod->{'_name'});
         }
     }
     if (@modules == @newmodules) {
