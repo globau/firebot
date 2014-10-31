@@ -1765,15 +1765,15 @@ sub registerVariables {
     my $self = shift;
     my (@variables) = @_;
     foreach (@variables) {
-        $self->{$$_[0]} = $$_[3] if defined($$_[3]);
-        if (defined($$_[1])) {
-            if ($$_[1]) {
-                $self->{'_config'}->{$self->{'_name'}.'::'.$$_[0]} = \$self->{$$_[0]};
+        $self->{$_->[0]} = $_->[3] if defined($_->[3]);
+        if (defined($_->[1])) {
+            if ($_->[1]) {
+                $self->{'_config'}->{$self->{'_name'}.'::'.$_->[0]} = \$self->{$_->[0]};
             } else {
-                delete($self->{'_config'}->{$self->{'_name'}.'::'.$$_[0]});
+                delete($self->{'_config'}->{$self->{'_name'}.'::'.$_->[0]});
             }
         }
-        $self->{'_variables'}->{$$_[0]} = $$_[2] if defined($$_[2]);
+        $self->{'_variables'}->{$_->[0]} = $_->[2] if defined($_->[2]);
     }
 }
 
