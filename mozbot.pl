@@ -1488,6 +1488,8 @@ sub registerConfigVariables {
     foreach my $var (@variables) {
         $configStructure{$var->[0]} = [$var->[1], $var->[0]];
     }
+
+    return;
 } # are you confused yet?
 
 sub configStructure {
