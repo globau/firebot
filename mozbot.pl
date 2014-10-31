@@ -1396,18 +1396,16 @@ sub bot_select_data_available {
 
 # print debugging info
 sub debug {
-    my $line;
-    foreach (@_) {
-        $line = $_; # can't chomp $_ since it is a hardref to the arguments...
-        chomp $line; # ...and they are probably a constant string!
+    foreach my $line (@_) {
+        chomp $line;
         if (-t) {
             print logdate() . " ($$) $line\n";
         }
         if ($LOGGING) {
             my $file = $LOGFILEPREFIX . '-' . DateTime->now->ymd('') . '.log';
-            if (open(LOG, ">>$file")) {
-                print LOG encode_utf8(logdate() . " $line\n");
-                close(LOG);
+            if (open(my $log_fh, '>>', $file)) {
+                print {$log_fh} encode_utf8(logdate() . " $line\n");
+                close ($log_fh);
             } else {
                 print logdate() . " [not logged, $!]\n";
             }
