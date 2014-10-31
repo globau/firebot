@@ -1764,17 +1764,19 @@ sub saveConfig {
 sub registerVariables {
     my $self = shift;
     my (@variables) = @_;
-    foreach (@variables) {
-        $self->{$_->[0]} = $_->[3] if defined($_->[3]);
-        if (defined($_->[1])) {
-            if ($_->[1]) {
-                $self->{'_config'}->{$self->{'_name'}.'::'.$_->[0]} = \$self->{$_->[0]};
+    foreach my $var (@variables) {
+        $self->{$var->[0]} = $var->[3] if defined($var->[3]);
+        if (defined($var->[1])) {
+            if ($var->[1]) {
+                $self->{'_config'}->{$self->{'_name'}.'::'.$var->[0]} = \$self->{$var->[0]};
             } else {
-                delete($self->{'_config'}->{$self->{'_name'}.'::'.$_->[0]});
+                delete($self->{'_config'}->{$self->{'_name'}.'::'.$var->[0]});
             }
         }
-        $self->{'_variables'}->{$_->[0]} = $_->[2] if defined($_->[2]);
+        $self->{'_variables'}->{$var->[0]} = $var->[2] if defined($var->[2]);
     }
+
+    return;
 }
 
 # internal implementation of the scheduler
