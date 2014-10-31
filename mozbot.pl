@@ -2586,6 +2586,8 @@ sub RegisterConfig {
         ['allowusers',      1, 1, []],
         ['denyusers',       1, 1, []],
     );
+
+    return;
 }
 
 # Set - called to set a variable to a particular value.
@@ -2690,6 +2692,8 @@ sub RegisterConfig {
             )
         }
     }
+
+    return;
 }
 
 # saveConfig - make sure we also save the main config variables...
