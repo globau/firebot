@@ -186,6 +186,13 @@ $ENV{'PATH'} =~ /^(.*)$/os;
 $ENV{'PATH'} = $1; # we have to assume their path is otherwise safe, they called us!
 delete (@ENV{'IFS', 'CDPATH', 'ENV', 'BASH_ENV'});
 
+# log our PID
+{
+    $0 =~ /^(.+)$/;
+    open(my $fh, '>', "$1.pid");
+    print $fh "$$\n";
+    close($fh);
+}
 
 # read the configuration file
 my $cfgfile = shift || "$0.cfg";
