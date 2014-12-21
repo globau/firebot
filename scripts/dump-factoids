@@ -1,0 +1,20 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+BEGIN { @AnyDBM_File::ISA = qw(DB_File GDBM_File NDBM_File) }
+use AnyDBM_File;
+use Fcntl;
+use FindBin qw($RealBin);
+
+my %are;
+tie(%are, 'AnyDBM_File', "$RealBin/../factoids-are", O_RDWR|O_CREAT, 0666) or die $!;
+foreach my $key (keys %are) {
+    print "<$key> $are{$key}\n";
+}
+
+my %is;
+tie(%is, 'AnyDBM_File', "$RealBin/../factoids-is", O_RDWR|O_CREAT, 0666) or die $!;
+foreach my $key (keys %is) {
+    print "<$key> $is{$key}\n";
+}
