@@ -24,7 +24,10 @@ $conn->add_handler(
     [ 376, 422 ], # MOTD
     sub {
         my ($self) = @_;
-        $self->sl('LIST');
+        # > LIST
+        # < You cannot list within the first 60 seconds of connecting
+        print "sleeping for 70 seconds..\n";
+        $self->schedule(70, sub { $self->sl('LIST') });
     }
 );
 $conn->add_handler(
@@ -41,6 +44,7 @@ $conn->add_handler(
     sub {
         my ($self) = @_;
         $self->quit();
+        print "\n";
 
         my @channels = sort {
             $channels{$b} <=> $channels{$a}
@@ -60,4 +64,5 @@ $SIG{__DIE__} = sub {
     die $error;
 };
 
+print "connecting..\n";
 $irc->start();
