@@ -151,7 +151,7 @@ sub DoSeen {
                 return;
             }
             $seen = $self->{dbh}->selectall_arrayref(
-                "SELECT nick,time,said FROM seen WHERE nick REGEXP ?",
+                "SELECT nick,time,said FROM seen WHERE nick REGEXP ? ORDER BY time DESC, nick",
                 { Slice => {} },
                 $regexp
             );
@@ -170,7 +170,7 @@ sub DoSeen {
                     return;
                 }
                 $seen = $self->{dbh}->selectall_arrayref(
-                    "SELECT nick,time,said FROM seen WHERE nick REGEXP ?",
+                    "SELECT nick,time,said FROM seen WHERE nick REGEXP ? ORDER BY time DESC, nick",
                     { Slice => {} },
                     $regexp
                 );
