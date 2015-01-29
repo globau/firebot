@@ -1,0 +1,49 @@
+#!/usr/bin/perl
+use strict;
+use warnings FATAL => 'all';
+use autodie;
+
+use FindBin '$RealBin';
+use lib "$RealBin/../lib";
+
+BEGIN { @AnyDBM_File::ISA = qw(DB_File GDBM_File NDBM_File) }
+use AnyDBM_File;
+use Fcntl;
+use DBI;
+
+print <<EOF;
+This script will migrate the seen database from Berkeley DB to SQLite.
+
+DO NOT EXECUTE THIS SCRIPT IF SEEN MODULE IS LOADED.
+
+Press <Return> to continue, or ^C to cancel.
+EOF
+<>;
+chdir("$RealBin/..");
+
+our $seen = { times => {}, states => {}};
+tie(%{$seen->{times}}, 'AnyDBM_File', 'seen-times', O_RDWR|O_CREAT, 0666) or die $!;
+tie(%{$seen->{states}}, 'AnyDBM_File', 'seen-states', O_RDWR|O_CREAT, 0666) or die $!;
+
+die "cannot migrate because seen.sqlite exists\n" if -e 'seen.sqlite';
+my $dbh = DBI->connect("dbi:SQLite:dbname=seen.sqlite", '', '');
+$dbh->do("PRAGMA auto_vacuum = 1");
+$dbh->do("PRAGMA encoding = 'UTF-8'");
+$dbh->do("PRAGMA foreign_keys = ON");
+$dbh->do("PRAGMA legacy_file_format = OFF");
+$dbh->do("PRAGMA short_column_names = ON");
+$dbh->do("PRAGMA journal_mode = 'WAL'");
+$dbh->do("CREATE TABLE IF NOT EXISTS seen(nick CHAR COLLATE NOCASE, time INT, said CHAR)");
+$dbh->do("CREATE UNIQUE INDEX IF NOT EXISTS seen_nick_idx ON seen(nick COLLATE NOCASE)");
+
+$dbh->do("BEGIN TRANSACTION");
+foreach my $nick (keys %{ $seen->{times} }) {
+    $dbh->do(
+        "INSERT INTO seen(nick, time, said) VALUES (?, ?, ?)",
+        undef,
+        lc($nick),
+        $seen->{times}->{$nick},
+        $seen->{states}->{$nick} // '',
+    );
+}
+$dbh->do("COMMIT TRANSACTION");

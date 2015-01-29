@@ -120,21 +120,21 @@ if ((defined($ARGV[0])) and ($ARGV[0] eq '--chroot')) {
     use lib 'lib';
 }
 
+# internal modules
+use Configuration;
+use Mails;
+use IO::SecurePipe;
+
 # important modules
-use Net::IRC 0.7; # 0.7 is not backwards compatible with 0.63 for CTCP responses
-use IO::SecurePipe; # internal based on IO::Pipe
-use Socket;
-use POSIX ":sys_wait_h";
 use Carp qw(cluck confess);
-use Configuration; # internal
-use Mails; # internal
-use Encode;
 use DateTime;
-
-# Net::IRC 0.74+ require Time::HiRes, if its missing, Net::IRC will fail with
-# a "No method called "time" for object." error during mozbot startup.
-
-# Note: Net::SMTP is also used, see the sendmail function in Mails.
+use Encode;
+use Net::IRC 0.7; # 0.7 is not backwards compatible with 0.63 for CTCP responses
+use Net::SMTP;
+use POSIX ":sys_wait_h";
+use Scalar::Util;
+use Socket;
+use Time::HiRes;
 
 # force flushing
 $|++;
@@ -1628,6 +1628,12 @@ sub checkPassword {
 # And now, for my next trick, the base module (duh).
 
 package BotModules;
+use strict;
+
+use DBD::SQLite;
+use DBI;
+use FindBin '$RealBin';
+use Scalar::Util 'blessed';
 
 1; # nothing to see here...
 
@@ -2178,6 +2184,32 @@ sub invite {
     $event->{'bot'}->invite($who, $channel);
 }
 
+sub sqlite {
+    my ($self, $path) = @_;
+    $path //= $RealBin;
+
+    my $filename = blessed($self);
+    die "invalid module for database"
+        unless $filename && $filename =~ /^BotModules::/;
+    $filename =~ s/^BotModules:://;
+    $filename =~ s/([A-Z])/-$1/g;
+    $filename = lc($filename);
+    $filename =~ s/-+/-/g;
+    $filename =~ s/(^-|-$)//g;
+    $filename = "$path/$filename.sqlite";
+    $filename =~ /^(.+)$/; # detaint
+
+    my $dbh = DBI->connect("dbi:SQLite:dbname=$filename", '', '');
+    $dbh->do("PRAGMA auto_vacuum = 1");
+    $dbh->do("PRAGMA encoding = 'UTF-8'");
+    $dbh->do("PRAGMA foreign_keys = ON");
+    $dbh->do("PRAGMA legacy_file_format = OFF");
+    $dbh->do("PRAGMA short_column_names = ON");
+    $dbh->do("PRAGMA journal_mode = 'WAL'");
+
+    return $dbh;
+}
+
 # pretty printer for turning lists of varying length strings into
 # lists of roughly equal length strings without losing any data
 sub prettyPrint {
@@ -2643,6 +2675,7 @@ sub Unload {
 ################################
 
 package BotModules::Admin;
+use strict;
 use vars qw(@ISA);
 @ISA = qw(BotModules);
 1;
