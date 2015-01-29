@@ -121,7 +121,7 @@ sub Saw {
 sub SpottedNickChange {
     my $self = shift;
     my ($event, $from, $to) = @_;
-    $self->_say($event->{from}, $event->{time}, "changing nick to $to.");
+    $self->_set($event->{from}, $event->{time}, "changing nick to $to.");
     return $self->SUPER::SpottedNickChange(@_);
 }
 
