@@ -2,6 +2,9 @@ log/*
 spool/*
 *.dir
 *.pag
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 config
 nohup.out
 mozbot.pl.cfg
