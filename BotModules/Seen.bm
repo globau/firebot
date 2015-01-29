@@ -192,7 +192,7 @@ sub DoSeen {
 
         } elsif (@$seen > 0) {
             foreach my $row (@$seen) {
-                if ($row->{said} ne '') {
+                if ($row->{said} eq '') {
                     $self->say($event, $row->{nick} . ' was last seen ' . ago($event->{time} - $row->{time}));
                 } else {
                     $self->say($event, $row->{nick} . ' was last seen ' . ago($event->{time} - $row->{time}) . ', ' . $row->{said});
