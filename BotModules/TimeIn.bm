@@ -1,0 +1,48 @@
+package BotModules::TimeIn;
+use strict;
+use base 'BotModules';
+
+use Mojo::DOM;
+use Mojo::URL;
+
+sub Told {
+    my ($self, $event, $message) = @_;
+
+    if ($message =~ /^time\s+in\s+(.+)$/i) {
+        my $query = $1;
+        my $url = Mojo::URL->new('https://www.google.com/search?num=1');
+        $url->query->param(q => 'time in "' . $query . '"');
+        $self->getURI($event, $url->to_string, $query);
+        return 0;
+    }
+
+    return $self->SUPER::Told(@_);
+}
+
+sub GotURI {
+    my ($self, $event, $uri, $output, $query) = @_;
+
+    my @response;
+    my $dom = Mojo::DOM->new($output);
+
+    my $result_count = scalar($dom->find('#search li')->each);
+    if ($result_count) {
+        foreach my $li ($dom->find('#search li')->first) {
+            foreach my $e ($li->find('div,span')->each) {
+                push @response, $e->text unless $e->text eq '';
+            }
+        }
+    }
+
+    if (scalar(@response) == 4) {
+        unshift @response, "It is";
+        $response[$#response] =~ s/^Time in /in /;
+        print join(' ', @response), "\n";
+    } else {
+        @response = ("Unable to determine time in '$query'");
+    }
+
+    $self->say($event, $event->{from} . ': ' . join(' ', @response));
+}
+
+1;

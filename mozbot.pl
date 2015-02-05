@@ -1959,6 +1959,7 @@ sub getURI {
         'curl', [
             '--silent',
             '--insecure',
+            '--location',
             '--max-time', '180',
             '--output', '-',
             '--user-agent', 'Mozilla/5.0 (compatible; mozbot)',
