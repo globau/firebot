@@ -216,7 +216,7 @@ sub CheckForBugs {
         do {
             if ($rest =~ m/ (?:^|                        # either the start of the string
                                []\s,.;:\\\/=?!()<>{}[-]) # or some punctuation
-                            bug [\s\#]* ([0-9]+)         # followed a string similar to "bug # 123" (put the number in $1)
+                            bug [\s\#\-]* ([0-9]+)       # followed a string similar to "bug # 123" (put the number in $1)
                             (?:[]\s,.;:\\\/=?!()<>{}[-]+ # followed optionally by some punctuation,
                             (.*))?$/osix) {              # and everything else (which we put in $2)
                 $bug = $1;
