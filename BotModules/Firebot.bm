@@ -47,7 +47,8 @@ sub Heard {
     my $self = shift;
     my ($event, $message) = @_;
 
-    # evidently #firefox gets a lot of italian pirates
+    # evidently #firefox gets a lot of italian pirates, and should be the only
+    # place we respond to calls for help.
     return 1 unless $event->{channel} eq '#firefox';
 
     if ($message =~/^!list$/i || $message =~/^!lista$/i || $message =~/^!search$/i) {
@@ -56,9 +57,23 @@ sub Heard {
             $event->{channel},
             $event->{from},
             "Please help localise Firefox! - http://www.mozillaitalia.it/home/come-iniziare/"
-        ); #Kick the User.
+        );
     }
-    return 0; # dealt with it...
+
+    elsif (($message =~/^help!$/i) || ($message =~/^"help!"$/i) || ($message =~/^!help$/i)) {
+        if ($event->{time} - $self->{lasthelp} > 20) {
+            $self->say(
+                $event,
+                $event->{from} . ": Welcome to #firefox! Just ask your question "
+                    . "and someone should be with you shortly. If you don't get "
+                    . "an answer after a while, you can try taking a look through "
+                    . "the support site: https://support.mozilla.org/",
+            );
+            $self->{lasthelp} = $event->{time};
+        }
+    }
+
+    return 0;
 }
 
 sub Told {
