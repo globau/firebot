@@ -29,6 +29,17 @@ sub _set {
     );
 }
 
+sub _isNoMessageChannel {
+    my $self = shift;
+    my ($channel) = @_;
+    foreach my $c (@{ $self->{noMessageChannels} }) {
+        if ($c eq $channel) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 sub Help {
     my $self = shift;
     my ($event) = @_;
@@ -52,6 +63,7 @@ sub RegisterConfig {
         ['overrides', 1, 1, {'therapist' => "Look, dude, I'm feeling fine, mm'k?"}], # canned responses
         ['maxLines', 1, 1, 5],
         ['directOnlyChannels', 1, 1, []], # list of channels where we're only observing and not responding to !seen unless told.
+        ['noMessageChannels', 1, 1, []], # list of channels where we don't log messages, only timestamps
     );
 }
 
@@ -62,7 +74,11 @@ sub Told {
     $self->{_lastSpoken}->{$event->{user}} = $now;
     if ($event->{channel} ne '') {
         my $channel = $event->{channel};
-        $self->_set($event->{from}, $now, "saying '$message' to me in $channel.");
+        if ($self->_isNoMessageChannel($channel)) {
+            $self->_set($event->{from}, $now, "talking to me in $channel.");
+        } else {
+            $self->_set($event->{from}, $now, "saying '$message' to me in $channel.");
+        }
     }
     if ($self->isAdmin($event) and $message =~ /^\s*(un)?mute\s+seen\s+in\s+(\S+)\s*$/osi){
         my $mute = !defined($1);
@@ -82,7 +98,11 @@ sub Heard {
     my ($event, $message) = @_;
     if ($event->{channel} ne '') {
         my $channel = $event->{channel};
-        $self->_set($event->{from}, $event->{time}, "saying '$message' in $channel.");
+        if ($self->_isNoMessageChannel($channel)) {
+            $self->_set($event->{from}, $event->{time}, "talking in $channel.");
+        } else {
+            $self->_set($event->{from}, $event->{time}, "saying '$message' in $channel.");
+        }
     }
     if (!(grep {$event->{'channel'} eq $_} @{$self->{directOnlyChannels}}) and $message =~ /^\s*!seen\s+(\S+)\s*$/osi) {
         $self->DoSeen($event, $1);
@@ -98,7 +118,11 @@ sub Felt {
     if ($event->{channel} ne '') {
         my $nick = $event->{from};
         my $channel = $event->{channel};
-        $self->_set($event->{from}, $event->{time}, "saying '* $nick $message' in $channel.")
+        if ($self->_isNoMessageChannel($channel)) {
+            $self->_set($event->{from}, $event->{time}, "talking in $channel.")
+        } else {
+            $self->_set($event->{from}, $event->{time}, "saying '* $nick $message' in $channel.")
+        }
     } else {
         return $self->SUPER::Felt(@_);
     }
@@ -111,7 +135,11 @@ sub Saw {
     if ($event->{channel} ne '') {
         my $nick = $event->{from};
         my $channel = $event->{channel};
-        $self->_set($event->{from}, $event->{time}, "saying '* $nick $message' in $channel.");
+        if ($self->_isNoMessageChannel($channel)) {
+            $self->_set($event->{from}, $event->{time}, "talking in $channel.");
+        } else {
+            $self->_set($event->{from}, $event->{time}, "saying '* $nick $message' in $channel.");
+        }
     } else {
         return $self->SUPER::Felt(@_);
     }
