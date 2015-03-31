@@ -157,6 +157,7 @@ sub GotURI {
             unless (($item->{title} =~ /^last update/osi) || 
                     (defined($self->{'data'}->{$uri}->{'items'}->{$item->{'title'}}))) {
                 $self->{'data'}->{$uri}->{'items'}->{$item->{'title'}} = $last;
+                $self->{'data'}->{$uri}->{'links'}->{$item->{'title'}} = $item->{'link'};
             }
         }
 
@@ -193,9 +194,14 @@ sub ReportDiffs {
     my ($event, $uri, $request) = @_;
     return unless $self->{'data'}->{$uri}->{'ready'};
     my $last = $self->{'data'}->{$uri}->{'last'};
+    my $count = 0;
     my @output;
-    foreach (keys(%{$self->{'data'}->{$uri}->{'items'}})) {
-        push(@output, $_) if ($self->{'data'}->{$uri}->{'items'}->{$_} == $last);
+    foreach my $title (keys(%{$self->{'data'}->{$uri}->{'items'}})) {
+        if ($self->{'data'}->{$uri}->{'items'}->{$title} == $last) {
+            $count++;
+            push @output, $title;
+            push @output, $self->{'data'}->{$uri}->{'links'}->{$title};
+        }
     }
 
     # -- #mrt was here --
@@ -214,7 +220,7 @@ sub ReportDiffs {
     # Ahem. So now we limit the diff reporting code to maxInChannel
     # items at a time...
 
-    if (@output and @output < $self->{'maxInChannel'}) {
+    if ($count and $count < $self->{'maxInChannel'}) {
         my %mutedChannels = ();
         if (defined($self->{'mutes'}->{$uri})) {
             %mutedChannels = map { lc($_) => 1 } split(/\s+/os, $self->{'mutes'}->{$uri});
