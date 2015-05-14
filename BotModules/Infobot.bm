@@ -1,4 +1,3 @@
-# -*- Mode: perl; tab-width: 4; indent-tabs-mode: nil; -*-
 ################################
 # Infobot Module               #
 ################################
@@ -8,20 +7,10 @@
 package BotModules::Infobot;
 use vars qw(@ISA);
 @ISA = qw(BotModules);
-BEGIN { @AnyDBM_File::ISA = qw(DB_File GDBM_File NDBM_File) }
-use AnyDBM_File;
-use Fcntl;
 1;
 
 # XXX "mozbot is a bot" fails (gets handled as a Tell of "is a bot" :-/)
 # XXX "who is foo" responds "I don't know what is foo" (should respond "I don't know _who_ is foo")
-
-# it seems tie() works on scope and not on reference counting, so as
-# soon as the thing it is tying goes out of scope (even if the variable
-# in question still has active references) it loses its magic.
-our $factoids = {'is' => {}, 'are' => {}};
-tie(%{$factoids->{'is'}}, 'AnyDBM_File', 'factoids-is', O_RDWR|O_CREAT, 0666) or die $!;
-tie(%{$factoids->{'are'}}, 'AnyDBM_File', 'factoids-are', O_RDWR|O_CREAT, 0666) or die $!;
 
 sub Help {
     my $self = shift;
@@ -84,6 +73,53 @@ sub RegisterConfig {
     );
 }
 
+sub Initialise {
+    my $self = shift;
+    $self->{dbh} = $self->sqlite();
+    $self->{dbh}->do("CREATE TABLE IF NOT EXISTS db_is(name CHAR COLLATE NOCASE, value CHAR)");
+    $self->{dbh}->do("CREATE UNIQUE INDEX IF NOT EXISTS db_is_idx ON db_is(name COLLATE NOCASE)");
+    $self->{dbh}->do("CREATE TABLE IF NOT EXISTS db_are(name CHAR COLLATE NOCASE, value CHAR)");
+    $self->{dbh}->do("CREATE UNIQUE INDEX IF NOT EXISTS db_are_idx ON db_are(name COLLATE NOCASE)");
+}
+
+sub _insert {
+    my ($self, $database, $name, $value) = @_;
+    $self->{dbh}->do(
+        "INSERT OR REPLACE INTO db_$database(name, value) VALUES (?, ?)",
+        undef,
+        $name, $value
+    );
+}
+
+sub _append {
+    my ($self, $database, $name, $value) = @_;
+    $self->_insert($database, $name, $self->_get($database, $name) . $value);
+}
+
+sub _get {
+    my ($self, $database, $name) = @_;
+    my ($value) = $self->{dbh}->selectrow_array(
+        "SELECT value FROM db_$database WHERE name=?",
+        undef,
+        $name
+    );
+    return $value;
+}
+
+sub _delete {
+    my ($self, $database, $name) = @_;
+    $self->{dbh}->do(
+        "DELETE FROM db_$database WHERE name=?",
+        undef,
+        $name
+    );
+}
+
+sub _exists {
+    my ($self, $database, $name) = @_;
+    return defined($self->_get($database, $name));
+}
+
 # Schedule - called when bot connects to a server, to install any schedulers
 # use $self->schedule($event, $delay, $times, $data)
 # where $times is 1 for a single event, -1 for recurring events,
@@ -96,9 +132,8 @@ sub Schedule {
 }
 
 sub Unload {
-    # just to make sure...
-    untie(%{$factoids->{'is'}});
-    untie(%{$factoids->{'are'}});
+    my $self = shift;
+    delete $self->{dbh};
 }
 
 sub Told {
@@ -304,15 +339,13 @@ sub SetFactoid {
             $subject = $self->CanonicalizeFactoid($database, $subject);
         } else {
             my $oldSubject = $self->CanonicalizeFactoid($database, $subject);
-            if (defined($factoids->{$database}->{$oldSubject})) {
-                delete($factoids->{$database}->{$oldSubject});
-            }
+            $self->_delete($database, $oldSubject);
         }
-        if ($replace or not defined($factoids->{$database}->{$subject})) {
+        if ($replace or not $self->_exists($database, $subject)) {
             $self->debug("Learning that $subject $database '$object'.");
-            $factoids->{$database}->{$subject} = $object;
+            $self->_insert($database, $subject, $object);
         } elsif (not $add) {
-            my @what = split(/\|/o, $factoids->{$database}->{$subject});
+            my @what = split(/\|/o, $self->_get($database, $subject));
             local $" = '\' or \'';
             if (not defined($fromBot)) {
                 if (@what == 1 and $what[0] eq $object) {
@@ -325,7 +358,7 @@ sub SetFactoid {
             return 0; # failed to update database
         } else {
             $self->debug("Learning that $subject $database also '$object'.");
-            $factoids->{$database}->{$subject} .= "|$object";
+            $self->_append($database, $subject, "|$object");
         }
         if (not defined($fromBot)) {
             $self->targettedSay($event, 'ok', $direct);
@@ -356,7 +389,7 @@ sub SetFactoid {
                     }
                 } elsif ($typeE eq 'DUNNO') {
                     my $who = defined($targetE) ? $targetE : $eventE->{'from'};
-                    $self->directSay($eventE, ":INFOBOT:REPLY <$who> $subject =$database=> $factoids->{$database}->{$subject}");
+                    $self->directSay($eventE, ":INFOBOT:REPLY <$who> $subject =$database=> " . $self->_get($database, $subject));
                     $entry->[1] = 'OLD';
                 }
             }
@@ -399,12 +432,12 @@ sub Literal {
     my $are = $self->CanonicalizeFactoid('are', $subject);
     if (defined($is) or defined($are)) {
         local $" = '\' or \'';
-        if (defined($factoids->{'is'}->{$is})) {
-            my @what = split(/\|/o, $factoids->{'is'}->{$is});
+        if ($self->_exists('is', $is)) {
+            my @what = split(/\|/o, $self->_get('is', $is));
             $self->targettedSay($event, "$is is '@what'.", 1);
         }
-        if (defined($factoids->{'are'}->{$are})) {
-            my @what = split(/\|/o, $factoids->{'are'}->{$is});
+        if ($self->_exists('are', $are)) {
+            my @what = split(/\|/o, $self->_get('are', $are));
             $self->targettedSay($event, "$are are '@what'.", 1);
         }
     } else {
@@ -430,8 +463,8 @@ sub GetFactoid {
     }
     my $database;
     ($database, $subject) = $self->FindFactoid($originalDatabase, $subject);
-    if (defined($factoids->{$database}->{$subject})) {
-        my @alternatives = split(/\|/o, $factoids->{$database}->{$subject});
+    if ($self->_exists($database, $subject)) {
+        my @alternatives = split(/\|/o, $self->_get($database, $subject));
         my $answer;
         if (@alternatives) {
             if (not defined($self->{'factoidPositions'}->{$database}->{$subject})
@@ -486,15 +519,12 @@ sub GetFactoid {
 sub CanonicalizeFactoid {
     my $self = shift;
     my($database, $subject) = @_;
-    if (not defined($factoids->{$database}->{$subject})) {
-        while (my $key = each %{$factoids->{$database}}) {
-            if (lc($key) eq lc($subject)) {
-                $subject = $key;
-                # can't return or 'each' iterator won't be reset XXX
-            }
-        }
-    }
-    return $subject;
+    my $existing = $self->{dbh}->selectrow_arrayref(
+        "SELECT name FROM db_$database WHERE name=?",
+        undef,
+        $subject
+    );
+    return $existing ? $existing->[0] : $subject;
 }
 
 sub FindFactoid {
@@ -503,9 +533,9 @@ sub FindFactoid {
     if (not defined($database)) {
         $database = 'is';
         $subject = $self->CanonicalizeFactoid('is', $subject);
-        if (not defined($factoids->{'is'}->{$subject})) {
+        if (not $self->_exists('is', $subject)) {
             $subject = $self->CanonicalizeFactoid('are', $subject);
-            if (defined($factoids->{'are'}->{$subject})) {
+            if ($self->_exists('are', $subject)) {
                 $database = 'are';
             }
         }
@@ -521,13 +551,13 @@ sub EditFactoid {
     if ($direct or $self->allowed($event, 'Edit')) {
         my $database;
         ($database, $subject) = $self->FindFactoid($database, $subject);
-        if (not defined($factoids->{$database}->{$subject})) {
+        if (not $self->_exists($database, $subject)) {
             $self->targettedSay($event, "Er, I don't know about this $subject thingy...", $direct);
             return;
         }
         $self->debug("Editing the $subject entry.");
         my @output;
-        foreach my $factoid (split(/\|/o, $factoids->{$database}->{$subject})) {
+        foreach my $factoid (split(/\|/o, $self->_get($database, $subject))) {
             $search = $self->sanitizeRegexp($search);
             if ($global and $caseInsensitive) {
                 $factoid =~ s/$search/$replace/gi;
@@ -540,7 +570,7 @@ sub EditFactoid {
             }
             push(@output, $factoid);
         }
-        $factoids->{$database}->{$subject} = join('|', @output);
+        $self->_insert($database, $subject, join('|', @output));
         $self->targettedSay($event, 'ok', $direct);
         $self->{'edits'}++;
     }
@@ -554,8 +584,8 @@ sub ForgetFactoid {
         my $database;
         foreach my $db ('is', 'are') {
             ($database, $subject) = $self->FindFactoid($db, $subject);
-            if (defined($factoids->{$database}->{$subject})) {
-                delete($factoids->{$database}->{$subject});
+            if ($self->_exists($database, $subject)) {
+                $self->_delete($database, $subject);
                 $count++;
             }
         }
@@ -661,8 +691,8 @@ sub tellBot {
     my $database;
     foreach my $db ('is', 'are') {
         ($database, $subject) = $self->FindFactoid($db, $subject);
-        if (defined($factoids->{$database}->{$subject})) {
-            $self->directSay($event, ":INFOBOT:REPLY <$target> $subject =$database=> $factoids->{$database}->{$subject}");
+        if ($self->_exists($database, $subject)) {
+            $self->directSay($event, ":INFOBOT:REPLY <$target> $subject =$database=> " . $self->_get($database, $subject));
             $count++;
         }
     }
@@ -749,8 +779,10 @@ sub countFactoids {
     my $self = shift;
     # don't want to use keys() as that would load the whole database index into memory.
     my $sum = 0;
-    while (my $factoid = each %{$factoids->{'is'}}) { $sum++; }
-    while (my $factoid = each %{$factoids->{'are'}}) { $sum++; }
+    my ($count) = $self->{dbh}->selectrow_array("SELECT COUNT(*) FROM db_is");
+    $sum += $count;
+    ($count) = $self->{dbh}->selectrow_array("SELECT COUNT(*) FROM db_are");
+    $sum += $count;
     return $sum;
 }
 
@@ -791,3 +823,201 @@ sub noIdea {
         $self->targettedSay($event, "Sorry, I've no idea what '$subject' $database.", $direct);
     }
 }
+
+__END__
+
+The Infobot Protocol
+====================
+
+Reverse engineered from infobot 0.45.3 by Ian Hickson.
+
+
+QUERY
+-----
+
+If a bot is asked something by a user and does not know the answer, it
+may send queries to all the bots it knows. Queries must be in private
+messages and should have the following form:
+
+   :INFOBOT:QUERY <target> subject
+
+...where "target" is the name of the user who sent the query in the
+first place, and "subject" is the question that was asked.
+
+In reality, "target" may be any string of non-whitespace character, so
+it could be used as an internal ID.
+
+A bot receiving a QUERY message must not try to contact the user given
+by "target" (that string should be treated as opaque) and must not
+make any assumptions about the "subject" string (it could contain
+*anything*, including high bit characters and the works).
+
+It is an error for the "subject" string to contain either "=is=>" or
+"=are=>". Receiving bots may ignore this error, however.
+
+Bot authors should carefully consider the potential for cascades
+before writing bots that chain QUERY messages. (As in, send out QUERY
+messages if they are unable to respond to a QUERY message themselves).
+In general, this is not a recommended behaviour.
+
+Bot authors are urged to write protection into their bots to avoid
+being affected by poorly written bots that cause cascades.
+
+
+REPLY
+-----
+
+Upon receiving a QUERY message, a bot may, if it has information on
+"subject", opt to send a private message back to the originating bot
+in the form of a REPLY message. Bots must not send unsolicited REPLY
+messages. The form of the REPLY message is:
+
+   :INFOBOT:REPLY <target> subject =database=> object
+
+...where "target" is the string of the same name from the original
+QUERY message, "subject" is the second string from the original QUERY
+message, "database" is one of "is" or "are" depending on the whether
+"subject" is determined to be singular or plural respectively, and
+"object" is the string that should be assumed to be the answer to
+"subject". The string may contain special formatting codes, these are
+described below.
+
+Upon receiving a REPLY message, bots should first check that they are
+expecting one. If they are, the user identified by the "target" string
+should be contacted and given the information represented by the
+"object" string. (Remember that the "target" string need not actually
+be the nick of the original user; it could be an internal key that
+indirectly identifies a user.)
+
+Bots should carefully check the integrity and authenticity of the
+"target" string, and must check that "database" is one of "is" or
+"are". The "subject" string ends at the first occurance of either
+"=is=>" or "=are=>". It is *not* an error for the "object" string to
+contain either of those substrings.
+
+Bots may opt to store the information given by a REPLY request so that
+future questions may be answered without depending on other bots.
+
+It is suggested that bots credit which bot actually knew the
+information when reporting back to the user.
+
+
+DUNNO
+-----
+
+(This is not part of the original infobot protocol. And is, as of
+2002-02-05, only supported by the mozbot2 Infobot module.)
+
+Upon receiving a QUERY message, a bot may, if it has no information on
+the "subject" in question, reply with a DUNNO message. This message
+has basically the same form as the QUERY message:
+
+   :INFOBOT:DUNNO <target> subject
+
+The DUNNO message indicates that the bot is not aware of the answer to
+the question, but would like to be informed of the answer, should the
+first bot ever find out about it. The "target" string should, as with
+the QUERY string, be considered opaque.
+
+Upon receiving a DUNNO message, there are several possible responses.
+If the bot is aware of the answer to "subject", then it should treat
+the DUNNO message as if it was a QUERY message (typically resulting in
+a REPLY message). This can occur if, for example, another bot has sent
+a REPLY to the original QUERY before this bot has had the chance to
+send the DUNNO message.
+
+If the first bot still doesn't know the answer, however, it may store
+the DUNNO request internally. If, at a future time, the bot is
+informed (either directly by a user or through a REPLY message) about
+the answer to "subject", then it may send a REPLY message to the bot
+that sent the DUNNO request, informing the bot of the value it learnt.
+
+
+SPECIAL STRINGS
+---------------
+
+The "object" string in the REPLY message may contain several special
+flags.
+
+   $who
+   If the string contains the string "$who" then, when the string is
+   given to the user, it should be replaced by the name of the user.
+
+   |
+   Multiple alternative replies may be encoded in one reply, those
+   should be separated by a vertical bar.
+
+   <reply>
+   If the string is prefixed by "<reply>" then the string should not
+   be prefixed by "subject is" or "subject are" as usual.
+
+   <action>
+   The string should be returned via a CTCP ACTION.
+
+   <alias>
+   The string should be taken as the name of another entry to look up.
+
+
+EXAMPLES
+--------
+
+In these examples, A, B and C are bots, and x, y and z are people.
+
+The first example shows a simple case of one bots asking two other
+bots for help, one of which gives a reply and the other of which says
+it has no idea.
+
+  +-------- originator of private message
+  |
+  |    +--- target of private message
+  |    |
+  V    V
+  z -> A: what is foo?
+  A -> z: I have no idea.
+  A -> B: :INFOBOT:QUERY <z> foo
+  A -> C: :INFOBOT:QUERY <z> foo
+  B -> A: :INFOBOT:REPLY <x> foo =is=> bar
+  C -> A: :INFOBOT:DUNNO <C> foo
+  A -> x: B knew: foo is bar
+  A -> C: :INFOBOT:REPLY <C> foo =is=> bar
+
+Note how the DUNNO in this case comes after the REPLY and thus is
+immediately answered.
+
+The next example uses <alias>. One bot knows the answer to the
+question as an alias to another word, but when the original bot asks
+about _that_ word, it is the second bot that can help.
+
+  z -> A: what is foo?
+  A -> z: I have no idea.
+  A -> B: :INFOBOT:QUERY <z> foo
+  A -> C: :INFOBOT:QUERY <z> foo
+  B -> A: :INFOBOT:REPLY <x> foo =is=> <alias>bar
+  C -> A: :INFOBOT:DUNNO <C> foo
+  A -> B: :INFOBOT:QUERY <z> bar
+  A -> C: :INFOBOT:QUERY <z> bar
+  A -> C: :INFOBOT:REPLY <C> foo =is=> <alias>bar
+  B -> A: :INFOBOT:DUNNO <B> bar
+  C -> A: :INFOBOT:REPLY <x> bar =is=> baz
+  A -> z: C knew: bar is baz
+  A -> B: :INFOBOT:REPLY <B> bar =is=> baz
+
+Note how the credit actually goes to the second bot. A better bot
+might remember all the bots involved and credit all of them. A better
+bot might also remember what the original question was and reply "foo
+is baz" instead of "bar is baz".
+
+Next we have some examples of special codes. If we have:
+
+  foo is bar|<alias>baz|<reply>foo to you too|<action>foos|$who
+  baz is foo
+
+...then the following are valid responses when asked about foo:
+
+  <A> foo is bar
+  <A> baz is foo
+  <A> foo to you too
+  * A foos
+  <A> foo is z
+
+-- end --

@@ -1,0 +1,51 @@
+#!/usr/bin/perl
+use strict;
+use warnings FATAL => 'all';
+use autodie;
+
+use FindBin '$RealBin';
+use lib "$RealBin/../lib";
+
+BEGIN { @AnyDBM_File::ISA = qw(DB_File GDBM_File NDBM_File) }
+use AnyDBM_File;
+use Fcntl;
+use DBI;
+
+print <<EOF;
+This script will migrate the infobot database from Berkeley DB to SQLite.
+
+DO NOT EXECUTE THIS SCRIPT IF INFOBOT MODULE IS LOADED.
+
+Press <Return> to continue, or ^C to cancel.
+EOF
+<>;
+chdir("$RealBin/..");
+
+our $factoids = {'is' => {}, 'are' => {}};
+tie(%{$factoids->{'is'}}, 'AnyDBM_File', 'factoids-is', O_RDWR|O_CREAT, 0666) or die $!;
+tie(%{$factoids->{'are'}}, 'AnyDBM_File', 'factoids-are', O_RDWR|O_CREAT, 0666) or die $!;
+
+die "cannot migrate because infobot.sqlite exists\n" if -e 'infobot.sqlite';
+my $dbh = DBI->connect("dbi:SQLite:dbname=infobot.sqlite", '', '');
+$dbh->do("PRAGMA auto_vacuum = 1");
+$dbh->do("PRAGMA encoding = 'UTF-8'");
+$dbh->do("PRAGMA foreign_keys = ON");
+$dbh->do("PRAGMA legacy_file_format = OFF");
+$dbh->do("PRAGMA short_column_names = ON");
+$dbh->do("PRAGMA journal_mode = 'WAL'");
+$dbh->do("CREATE TABLE IF NOT EXISTS db_is(name CHAR COLLATE NOCASE, value CHAR)");
+$dbh->do("CREATE UNIQUE INDEX IF NOT EXISTS db_is_idx ON db_is(name COLLATE NOCASE)");
+$dbh->do("CREATE TABLE IF NOT EXISTS db_are(name CHAR COLLATE NOCASE, value CHAR)");
+$dbh->do("CREATE UNIQUE INDEX IF NOT EXISTS db_are_idx ON db_are(name COLLATE NOCASE)");
+
+$dbh->do("BEGIN TRANSACTION");
+foreach my $database (qw( is are )) {
+    while (my $name = each %{ $factoids->{$database} }) {
+        $dbh->do(
+            "INSERT INTO db_$database(name, value) VALUES (?, ?)",
+            undef,
+            $name, $factoids->{$database}->{$name}
+        );
+    }
+}
+$dbh->do("COMMIT TRANSACTION");
