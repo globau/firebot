@@ -1,0 +1,46 @@
+#!/usr/bin/perl
+use strict;
+use warnings FATAL => 'all';
+use autodie;
+
+use FindBin '$RealBin';
+use lib "$RealBin/../lib";
+
+use DBI;
+
+print <<EOF;
+This script will migrate the seen database from Berkeley DB to SQLite.
+
+DO NOT EXECUTE THIS SCRIPT IF FIREBOT IS RUNNING
+KARAM ENTRIES IN THE CONFIG FILE NEED TO BE MANUALLY DELETED
+
+Press <Return> to continue, or ^C to cancel.
+EOF
+<>;
+chdir("$RealBin/..");
+
+die "cannot migrate because karma.sqlite exists\n" if -e 'karma.sqlite';
+my $dbh = DBI->connect("dbi:SQLite:dbname=karma.sqlite", '', '');
+$dbh->do("PRAGMA auto_vacuum = 1");
+$dbh->do("PRAGMA encoding = 'UTF-8'");
+$dbh->do("PRAGMA foreign_keys = ON");
+$dbh->do("PRAGMA legacy_file_format = OFF");
+$dbh->do("PRAGMA short_column_names = ON");
+$dbh->do("PRAGMA journal_mode = 'WAL'");
+$dbh->do("CREATE TABLE IF NOT EXISTS scores(nick CHAR COLLATE NOCASE, score INT)");
+$dbh->do("CREATE UNIQUE INDEX IF NOT EXISTS scores_nick_idx ON scores(nick COLLATE NOCASE)");
+
+$dbh->do("BEGIN TRANSACTION");
+open(my $fh, '<', 'mozbot.pl.cfg') or die $!;
+while(<$fh>) {
+    chomp;
+    next unless /^Karma::scores=/;
+    die $_ unless /^Karma::scores="(.+?)"=>(-?\d+)/;
+    my ($nick, $score) = ($1, $2);
+    $dbh->do(
+        "INSERT INTO scores(nick, score) VALUES (?, ?)",
+        undef,
+        lc($nick), $score,
+    );
+}
+$dbh->do("COMMIT TRANSACTION");

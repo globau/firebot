@@ -1,25 +1,33 @@
-# -*- Mode: perl; tab-width: 4; indent-tabs-mode: nil; -*-
 ################################
 # Karma Module                 #
 ################################
 
 package BotModules::Karma;
-use vars qw(@ISA);
-@ISA = qw(BotModules);
+use strict;
+use base 'BotModules';
 1;
 
-# RegisterConfig - Called when initialised, should call registerVariables
+sub Initialise {
+    my $self = shift;
+    $self->{dbh} = $self->sqlite();
+    $self->{dbh}->do("CREATE TABLE IF NOT EXISTS scores(nick CHAR COLLATE NOCASE, score INT)");
+    $self->{dbh}->do("CREATE UNIQUE INDEX IF NOT EXISTS scores_nick_idx ON scores(nick COLLATE NOCASE)");
+}
+
+sub Unload {
+    my $self = shift;
+    delete $self->{dbh};
+}
+
 sub RegisterConfig {
     my $self = shift;
     $self->SUPER::RegisterConfig(@_);
     $self->registerVariables(
-      # [ name, save?, settable? ]
-      ['scores', 1, 1, {}], # nick => total karma.
-      ['privateScores', 1, 1, {}], # nick => nick karma nick karma...
-      ['secondsDelayRequired', 1, 1, 20],
-      ['_lastspoken', 0, 0, {}], # nick => nick => time
-      ['ranklimit', 1, 1, 10], # ranklimit is changeable if anyone want it smaller or higher
-      ['blacklist', 1, 1, []], # list of lowercase nicks who aren't permitted to have karma
+        # [ name, save?, settable? ]
+        ['secondsDelayRequired', 1, 1, 20],
+        ['_lastspoken', 0, 0, {}], # nick => nick => time
+        ['ranklimit', 1, 1, 10], # ranklimit is changeable if anyone want it smaller or higher
+        ['blacklist', 1, 1, []], # list of lowercase nicks who aren't permitted to have karma
     );
 }
 
@@ -27,10 +35,10 @@ sub Help {
     my $self = shift;
     my ($event) = @_;
     return {
-            '' => 'A karma tracker. If you have authenticated (using the \'auth\' command) then it will also keep track of your own setting of people\'s karma, as well as the total of everyone\'s settings. Use the \'rank\' command to find someone\'s karma rank.',
-            '++' => 'Increase someone\'s karma. Syntax: victim++',
-            '--' => 'Decrease someone\'s karma. Syntax: victim--',
-            'rank' => 'Find someone\'s karma level. Omit the victim\'s name to get a complete listing of everyone\'s karma (long). Syntax: \'rank victim\' or just \'rank\'',
+        '' => 'A karma tracker. Use the \'rank\' command to find someone\'s karma rank.',
+        '++' => 'Increase someone\'s karma. Syntax: victim++',
+        '--' => 'Decrease someone\'s karma. Syntax: victim--',
+        'rank' => 'Find someone\'s karma level. Omit the victim\'s name to get top users. Syntax: \'rank victim\' or just \'rank\'',
     };
 }
 
@@ -43,13 +51,12 @@ sub Told {
         $self->ChangeKarma($event, $1, -1);
     } elsif ($message =~ /^\s*(?:karma\s+)?ranks?[?\s]*$/os) {
         $self->ReportKarmaRanks($event, $1);
-    } elsif ($message =~ /^\s*karma(?:\s+rank)?\s+([^\s\?]+)[?\s]*$/os or
-             $message =~ /^\s*(?:karma\s+)?rank\s+([^\s\?]+)[?\s]*$/os) {
+    } elsif ($message =~ /^\s*karma(?:\s+rank)?\s+([^\s\?]+)[?\s]*$/os or $message =~ /^\s*(?:karma\s+)?rank\s+([^\s\?]+)[?\s]*$/os) {
         $self->ReportKarma($event, $1);
     } else {
         return $self->SUPER::Told(@_);
     }
-    return 0; # dealt with it...
+    return 0;
 }
 
 sub Heard {
@@ -62,145 +69,92 @@ sub Heard {
     } else {
         return $self->SUPER::Told(@_);
     }
-    return 0; # we've dealt with it, no need to do anything else.
+    return 0;
 }
 
 sub ChangeKarma {
     my $self = shift;
     my ($event, $who, $delta) = @_;
     $self->debug("$who += $delta requested");
-    if (grep $_ eq lc $who, @{$self->{'blacklist'}})
-	{
+
+    if (grep { $_ eq lc $who } @{$self->{'blacklist'}}) {
         $self->debug("$who is blacklisted. Ignoring karma change request.");
         return 1;
     }
-    if ((defined($self->{'_lastSpoken'}->{$event->{'user'}})) and
-        (defined($self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who})) and
-        (($event->{'time'} - $self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who}) <= $self->{'secondsDelayRequired'})) {
-        $self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who} = $self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who}+5;
+
+    if (defined($self->{'_lastSpoken'}->{$event->{'user'}})
+        and defined($self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who})
+        and (($event->{'time'} - $self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who}) <= $self->{'secondsDelayRequired'})
+    ) {
+        $self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who} = $self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who} + 5;
         my $delay = $self->{'secondsDelayRequired'} - ($event->{'time'} - $self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who});
         $self->directSay($event, "You will have to wait another $delay seconds before being able to change ${who}'s karma.");
-    } else {
-        if (not defined($self->{'_lastSpoken'}->{$event->{'user'}})) {
-            $self->{'_lastSpoken'}->{$event->{'user'}} = {};
-        }
-        $self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who} = $event->{'time'};
-        if (lc $event->{'from'} eq lc $who) {
-            if ($delta > 0) {
-                $delta = -$delta;
-            }
-        }
-        if ($event->{'channel'} ne '') {
-            $self->{'scores'}->{lc $who} += $delta;
-            if ($self->{'scores'}->{lc $who} == 0) {
-                delete($self->{'scores'}->{lc $who});
-            }
-        }
-        my $nick = lc $event->{'userName'};
-        if ($nick) {
-            if (not defined($self->{"privateScores"}->{$nick})) {
-                $self->{"privateScores"}->{$nick} = (lc($who) . ' ' . $delta);
-            } else {
-                my %privateScores = split(' ', $self->{"privateScores"}->{$nick});
-                $privateScores{lc $who} += $delta;
-                if ($privateScores{lc $who} == 0) {
-                    delete($privateScores{lc $who});
-                }
-                my @privateScores = %privateScores;
-                local $" = ' ';
-                $self->{'privateScores'}->{$nick} = "@privateScores";
-            }
-        } elsif ($event->{'channel'} eq '') {
-            $self->say($event, 'For private stats, you need to authenticate. Use the \'newuser\' and \'auth\' commands.');
-        }
-        $self->saveConfig();
+        return 0;
     }
+
+    if (not defined($self->{'_lastSpoken'}->{$event->{'user'}})) {
+        $self->{'_lastSpoken'}->{$event->{'user'}} = {};
+    }
+    $self->{'_lastSpoken'}->{$event->{'user'}}->{lc $who} = $event->{'time'};
+
+    if (lc $event->{'from'} eq lc $who) {
+        if ($delta > 0) {
+            $delta = -$delta;
+        }
+    }
+
+    $self->{dbh}->do(
+        "INSERT OR IGNORE INTO scores(nick, score) VALUES (?, ?)",
+        undef,
+        lc($who), 0
+    );
+    $self->{dbh}->do(
+        "UPDATE scores SET score = score + ? WHERE nick = ?",
+        undef,
+        $delta, lc($who)
+    );
+    $self->{dbh}->do(
+        "DELETE FROM scores WHERE score = 0"
+    );
+    return 0;
 }
 
 sub ReportKarma {
     my $self = shift;
     my ($event, $who) = @_;
-    if (not defined($self->{'scores'}->{lc $who})) {
+
+    my ($score) = $self->{dbh}->selectrow_array(
+        "SELECT score FROM scores WHERE nick = ?",
+        undef,
+        lc($who)
+    );
+    if (!defined $score) {
         $self->say($event, "$who has no karma.");
     } else {
-        my $karma = $self->{'scores'}->{lc $who};
-        my @order = sort { $self->{'scores'}->{$b} <=> $self->{'scores'}->{$a} } keys(%{$self->{'scores'}});
-        my $rank = 0;
-        if (scalar(@order)) {
-            user: foreach my $user (@order) {
-                $rank++;
-                if (lc $user eq lc $who) {
-                    last user;
-                }
-            }
-        }
-        $self->say($event, "$who has $karma points of karma (rank $rank).");
-    }
-    if ($event->{'channel'} eq '') {
-        $nick = lc $event->{'userName'};
-        if ($nick) {
-            if (not defined($self->{"privateScores"}->{$nick})) {
-                $self->say($event, "You have not given anyone any karma.");
-            } else {
-                my %privateScores = split(' ', $self->{"privateScores"}->{$nick});
-                my $karma = $privateScores{lc $who};
-
-                if (not defined($karma)) {
-                    $self->say($event, "You have not given $who any karma.");
-                } else {
-                    $self->say($event, "You have given $who $karma points of karma.");
-                }
-            }
-        } else {
-            $self->say($event, 'For private stats, you need to authenticate. Use the \'newuser\' and \'auth\' commands.');
-        }
+        my ($rank) = $self->{dbh}->selectrow_array(
+            "SELECT COUNT(*) FROM (SELECT score FROM scores WHERE score >= ? GROUP BY score ORDER BY score DESC)",
+            undef,
+            $score
+        );
+        $self->say($event, "$who has $score points of karma (rank $rank).");
     }
 }
 
 sub ReportKarmaRanks {
     my $self = shift;
     my ($event) = @_;
-    my @order = sort { $self->{'scores'}->{$b} <=> $self->{'scores'}->{$a} } keys(%{$self->{'scores'}});
-    if (scalar(@order)) {
-        if ($event->{'channel'} ne '') {
-            my $top = $order[0];
-            my $score = $self->{'scores'}->{$top};
-            $self->say($event, "The person with the most karma is $top with $score points.");
-        }
-        $self->say($event, "Global rankings (Top $self->{'ranklimit'}):");
-        $self->ReportKarmaRanksList($event, \@order, $self->{'scores'});
-    }
-    if ($event->{'channel'} eq '') {
-        $nick = lc $event->{'userName'};
-        if ($nick) {
-            if (defined($self->{"privateScores"}->{$nick})) {
-                my %privateScores = split(' ', $self->{"privateScores"}->{$nick});
-                @order = sort { $privateScores{$b} <=> $privateScores{$a} } keys(%privateScores);
-                if (scalar(@order)) {
-                    $self->directSay($event, "Personal rankings:");
-                    $self->ReportKarmaRanksList($event, \@order, \%privateScores);
-                } else {
-                    $self->say($event, "I seem to have lost track of the people to which you gave karma points.");
-                }
-            } else {
-                $self->say($event, "You have not given anyone karma.");
-            }
-        } else {
-            $self->say($event, 'For private stats, you need to authenticate. Use the \'newuser\' and \'auth\' commands.');
-        }
-    }
-}
 
-sub ReportKarmaRanksList {
-    my $self = shift;
-    my($event, $order, $scores) = @_;
-    my $rank = 1;
-    foreach my $entry (@$order) {
-        my $score = $scores->{$entry};
-        $self->say($event, "$rank. $entry ($score)");
-        if($rank >= $self->{'ranklimit'}) {
-            return 1;
-        }
+    my $ranks = $self->{dbh}->selectall_arrayref(
+        "SELECT score, GROUP_CONCAT(nick) AS nicks FROM scores GROUP BY score ORDER BY score DESC LIMIT ?",
+        { Slice => {} },
+        $self->{ranklimit}
+    );
+    return unless @$ranks;
+    $self->say($event, "Global rankings (Top $self->{'ranklimit'}):");
+    my $rank = 0;
+    foreach my $row (@$ranks) {
         $rank++;
+        my $nicks = join(',', sort split(',', $row->{nicks}));
+        $self->say($event, sprintf('%s. %s (%s)', $rank, $nicks, $row->{score}));
     }
 }
