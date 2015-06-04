@@ -12,6 +12,7 @@ my %channels =
     map { /^channels=(#.+)/; $1 }
     grep { /^channels=/ }
     read_file("$RealBin/../mozbot.pl.cfg");
+my %nick_count;
 
 my $irc = Net::IRC->new();
 $irc->debug(0);
@@ -36,25 +37,36 @@ $conn->add_handler(
         my ($self, $event) = @_;
         my (undef, $channel, $count) = $event->args;
         $channel = lc($channel);
-        $channels{$channel} = $count if exists $channels{$channel};
+        return unless exists $channels{$channel};
+        $nick_count{$channel} = $count;
+        delete $channels{$channel};
     }
 );
 $conn->add_handler(
     [ 323 ], # LIST end
     sub {
         my ($self) = @_;
-        $self->quit();
-        print "\n";
-
-        my @channels = sort {
-            $channels{$b} <=> $channels{$a}
-            || $a cmp $b
-        } keys %channels;
-        foreach my $channel (@channels) {
-            my $count = $channels{$channel};
-            next if $count > 5;
-            printf "%s %s\n", ($count ? $count : '?'), $channel;
-        }
+        done($self);
+    }
+);
+$conn->add_handler(
+    [ 353 ], # JOIN line
+    sub {
+        my ($self, $event) = @_;
+        my (undef, undef, $channel, $nicks) = $event->args;
+        $channel = lc($channel);
+        $nick_count{$channel} //= 0;
+        $nick_count{$channel} += scalar(split(/ /, $nicks));
+    }
+);
+$conn->add_handler(
+    [ 366 ], # JOIN end
+    sub {
+        my ($self, $event) = @_;
+        my (undef, $channel) = $event->args;
+        $channel = lc($channel);
+        delete $channels{$channel};
+        done($self);
     }
 );
 
@@ -66,3 +78,29 @@ $SIG{__DIE__} = sub {
 
 print "connecting..\n";
 $irc->start();
+
+sub done {
+    my ($self) = @_;
+
+    # some channels require us to join to get the count
+    my $completed = !(scalar keys %channels);
+    foreach my $channel (sort keys %channels) {
+        next if $channels{$channel};
+        $self->sl("JOIN $channel");
+        $channels{$channel} = 1;
+    }
+    return unless $completed;
+
+    $self->quit();
+    print "\n";
+
+    my @channels = sort {
+        $nick_count{$b} <=> $nick_count{$a}
+        || $a cmp $b
+    } keys %nick_count;
+    foreach my $channel (@channels) {
+        my $count = $nick_count{$channel};
+        next if $count > 5;
+        printf "%s %s\n", ($count ? $count : '?'), $channel;
+    }
+}
