@@ -37,7 +37,6 @@ sub GotURI {
     if (scalar(@response) == 4) {
         unshift @response, "It is";
         $response[$#response] =~ s/^Time in /in /;
-        print join(' ', @response), "\n";
     } else {
         @response = ("Unable to determine time in '$query'");
     }
