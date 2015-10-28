@@ -51,7 +51,9 @@ sub Heard {
     # place we respond to calls for help.
     return 1 unless $event->{channel} eq '#firefox';
 
-    if ($message =~/^!list$/i || $message =~/^!lista$/i || $message =~/^!search$/i) {
+    $message = lc($message);
+
+    if (grep { $message eq $_ } qw( !list !lista !search )) {
         $self->kick(
             $event,
             $event->{channel},
@@ -60,7 +62,7 @@ sub Heard {
         );
     }
 
-    elsif (($message =~/^help!$/i) || ($message =~/^"help!"$/i) || ($message =~/^!help$/i)) {
+    elsif (grep { $message eq $_ } qw( help! "help!" !help help )) {
         if ($event->{time} - $self->{lasthelp} > 20) {
             $self->say(
                 $event,
