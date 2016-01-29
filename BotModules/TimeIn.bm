@@ -2,17 +2,30 @@ package BotModules::TimeIn;
 use strict;
 use base 'BotModules';
 
-use Mojo::DOM;
+use DateTime;
+use Mojo::JSON qw( decode_json );
 use Mojo::URL;
+
+sub RegisterConfig {
+    my $self = shift;
+    $self->SUPER::RegisterConfig(@_);
+    $self->registerVariables(
+      # [ name, save?, settable?, value ]
+        ['apiKey', 1, 1, ''],
+    );
+}
 
 sub Told {
     my ($self, $event, $message) = @_;
 
-    if ($message =~ /^time\s+in\s+(.+)$/i) {
-        my $query = $1;
-        my $url = Mojo::URL->new('https://www.google.com/search?num=1');
-        $url->query->param(q => 'time in "' . $query . '"');
-        $self->getURI($event, $url->to_string, $query);
+    if ($self->{apiKey} && $message =~ /^time\s+in\s+(.+)$/i) {
+        my $address = $1;
+        my $url = Mojo::URL->new('https://maps.googleapis.com/maps/api/geocode/json');
+        $url->query(
+            key => $self->{apiKey},
+            address => $address,
+        );
+        $self->getURI($event, $url->to_string, { state => 'geocode', address => $address });
         return 0;
     }
 
@@ -20,28 +33,56 @@ sub Told {
 }
 
 sub GotURI {
-    my ($self, $event, $uri, $output, $query) = @_;
+    my ($self, $event, $uri, $output, $params) = @_;
 
     my @response;
-    my $dom = Mojo::DOM->new($output);
+    if ($params->{state} eq 'geocode') {
+        eval {
+            my $result = decode_json($output);
+            die "geocode: bad status\n" unless $result->{status} eq 'OK';
+            my $results = $result->{results};
+            die "geocode: no results\n" unless @$results;
+            $params->{name} = $results->[0]->{formatted_address};
+            $params->{lat} = detaint_float($results->[0]->{geometry}->{location}->{lat});
+            $params->{lng} = detaint_float($results->[0]->{geometry}->{location}->{lng});
+        };
+        if ($@) {
+            push @response, "Unable to determine time in '" . $params->{address} . "'";
+            # push @response, $@; # debugging
+        } else {
+            my $url = Mojo::URL->new('https://maps.googleapis.com/maps/api/timezone/json');
+            $url->query(
+                key => $self->{apiKey},
+                location => $params->{lat} . ',' . $params->{lng},
+                timestamp => time(),
+            );
+            $params->{state} = 'timezone';
+            $self->getURI($event, $url->to_string, $params);
+        }
 
-    my $result_count = scalar($dom->find('#search li')->each);
-    if ($result_count) {
-        foreach my $li ($dom->find('#search li')->first) {
-            foreach my $e ($li->find('div,span')->each) {
-                push @response, $e->text unless $e->text eq '';
-            }
+    } elsif ($params->{state} eq 'timezone') {
+        my $dt;
+        eval {
+            my $result = decode_json($output);
+            die "timezone: bad status\n" unless $result->{status} eq 'OK';
+            $dt = DateTime->now->set_time_zone($result->{timeZoneId});
+        };
+        if ($@) {
+            push @response, "Unable to determine time in '" . $params->{address} . "'";
+            # push @response, $@; # debugging
+        } else {
+            push @response, sprintf('It is %s in %s', lc($dt->format_cldr('h:mma')), $params->{name});
         }
     }
-
-    if (scalar(@response) == 4) {
-        unshift @response, "It is";
-        $response[$#response] =~ s/^Time in /in /;
-    } else {
-        @response = ("Unable to determine time in '$query'");
+    if (@response) {
+        $self->say($event, $event->{from} . ': ' . join(' ', @response));
     }
+}
 
-    $self->say($event, $event->{from} . ': ' . join(' ', @response));
+sub detaint_float {
+    my ($f) = @_;
+    return 0 unless $f =~ /^(-?\d+(?:\.\d+)?)$/;
+    return $1;
 }
 
 1;
