@@ -6,6 +6,18 @@ use DateTime;
 use Mojo::JSON qw( decode_json );
 use Mojo::URL;
 
+sub Initialise {
+    my $self = shift;
+    $self->{dbh} = $self->sqlite();
+    $self->{dbh}->do("CREATE TABLE IF NOT EXISTS places(address CHAR, name CHAR, timezone CHAR)");
+    $self->{dbh}->do("CREATE UNIQUE INDEX IF NOT EXISTS places_idx ON places(address COLLATE NOCASE)");
+}
+
+sub Unload {
+    my $self = shift;
+    delete $self->{dbh};
+}
+
 sub RegisterConfig {
     my $self = shift;
     $self->SUPER::RegisterConfig(@_);
@@ -20,6 +32,19 @@ sub Told {
 
     if ($self->{apiKey} && $message =~ /^time\s+in\s+(.+)$/i) {
         my $address = $1;
+        $address =~ s/(^\s+|\s+$)//g;
+        $address =~ s/\s+/ /g;
+
+        my $cached = $self->{dbh}->selectrow_hashref(
+            "SELECT address,name,timezone FROM places WHERE address LIKE ?",
+            undef,
+            $address,
+        );
+        if ($cached) {
+            $self->time_in($event, $cached);
+            return 0;
+        }
+
         my $url = Mojo::URL->new('https://maps.googleapis.com/maps/api/geocode/json');
         $url->query(
             key => $self->{apiKey},
@@ -61,21 +86,53 @@ sub GotURI {
         }
 
     } elsif ($params->{state} eq 'timezone') {
-        my $dt;
         eval {
             my $result = decode_json($output);
             die "timezone: bad status\n" unless $result->{status} eq 'OK';
-            $dt = DateTime->now->set_time_zone($result->{timeZoneId});
+            $params->{timezone} = $result->{timeZoneId};
         };
         if ($@) {
             push @response, "Unable to determine time in '" . $params->{address} . "'";
-            # push @response, $@; # debugging
         } else {
-            push @response, sprintf('It is %s in %s', lc($dt->format_cldr('h:mma')), $params->{name});
+            $self->{dbh}->do(
+                "INSERT INTO places(address,name,timezone) VALUES(?,?,?)",
+                undef,
+                $params->{address}, $params->{name}, $params->{timezone},
+            );
+            $self->time_in($event, $params);
+            return;
         }
     }
     if (@response) {
         $self->say($event, $event->{from} . ': ' . join(' ', @response));
+    }
+}
+
+sub time_in {
+    my ($self, $event, $params) = @_;
+    my $dt;
+    eval {
+        $dt = DateTime->now->set_time_zone($params->{timezone});
+    };
+    if ($@) {
+        $self->say(
+            $event,
+            sprintf(
+                "%s: Unable to determine time in '%s'",
+                $event->{from},
+                $params->{address},
+            )
+        );
+    } else {
+        $self->say(
+            $event,
+            sprintf(
+                '%s: It is %s in %s',
+                $event->{from},
+                lc($dt->format_cldr('h:mma')),
+                $params->{name},
+            )
+        );
     }
 }
 
