@@ -749,7 +749,7 @@ sub on_disconnected {
         debug("Hrm, $server said something about an identd problem.");
         debug("Trying again with our real username, hold on.");
         debug("The full message from the server was: '$reason'");
-    } elsif ($reason =~ /Excess Flood/osi) {
+    } elsif ($reason =~ /Excess Flood/i || $reason =~ /RecvQ exceeded/i) {
         # increase the delay by 20%
         $delaytime = $delaytime * 1.2;
         save_config_vars([\$serverRestrictsIRCNames]);
