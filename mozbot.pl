@@ -136,6 +136,9 @@ use Scalar::Util;
 use Socket;
 use Time::HiRes;
 
+# make sure we're using our modified Net::IRC version
+die "Incorrect Net::IRC loaded\n" unless $Net::IRC::MOZBOT;
+
 # force flushing
 $|++;
 
@@ -334,7 +337,7 @@ sub setup_connection {
     $uptime = time();
 
     debug("connecting to $server:$port using nick '$nicks[$nick]'..." 
-			. ($ssl && lc($ssl) eq 'yes')? "via SSL" : "");
+			. (lc($ssl // '') eq 'yes' ? " via SSL" : ""));
     my ($bot, $mailed);
 
     $lastNick = undef;
