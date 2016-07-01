@@ -1,0 +1,42 @@
+package BotModules::MOC;
+use strict;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Initialise {
+}
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    return $self->SUPER::Told(@_) unless $message =~ /^oncall\b/i;
+    $self->say($event, 'current MOC oncall: ' . ($self->{_oncall} ? $self->{_oncall} : '???'));
+}
+
+sub Schedule {
+    my $self = shift;
+    my ($event) = @_;
+    $self->schedule($event, 1, 1, 'oncall');
+    $self->schedule($event, 60 * 5, -1, 'oncall');
+    return $self->SUPER::Schedule($event);
+}
+
+sub Scheduled {
+    my $self = shift;
+    my ($event, @data) = @_;
+    if ($data[0] eq 'oncall') {
+        $event->{bot}->topic('#moc');
+    } else {
+        $self->SUPER::Scheduled($event, @data);
+    }
+}
+
+sub SpottedTopicChange {
+    my $self = shift;
+    my ($event, $channel, $topic) = @_;
+    if (lc($channel) eq '#moc' && $topic =~ /on duty sysadmin:\s*(\S+)/i) {
+        $self->{_oncall} = $1;
+    }
+    return $self->SUPER::SpottedTopicChange(@_);
+}
