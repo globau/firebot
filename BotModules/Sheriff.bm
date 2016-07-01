@@ -1,0 +1,42 @@
+package BotModules::Sheriff;
+use strict;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+sub Initialise {
+}
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    return $self->SUPER::Told(@_) unless $message =~ /^sheriff\b/i;
+    $self->say($event, 'current sheriff ' . ($self->{_sheriff} ? $self->{_sheriff} : '???'));
+}
+
+sub Schedule {
+    my $self = shift;
+    my ($event) = @_;
+    $self->schedule($event, 1, 1, 'sheriff');
+    $self->schedule($event, 60 * 5, -1, 'sheriff');
+    return $self->SUPER::Schedule($event);
+}
+
+sub Scheduled {
+    my $self = shift;
+    my ($event, @data) = @_;
+    if ($data[0] eq 'sheriff') {
+        $event->{bot}->topic('#sheriffs');
+    } else {
+        $self->SUPER::Scheduled($event, @data);
+    }
+}
+
+sub SpottedTopicChange {
+    my $self = shift;
+    my ($event, $channel, $topic) = @_;
+    if (lc($channel) eq '#sheriffs' && $topic =~ /sheriffduty[=: ]+(\S+)/i) {
+        $self->{_sheriff} = $1;
+    }
+    return $self->SUPER::SpottedTopicChange(@_);
+}
