@@ -13,6 +13,7 @@ my %channels =
     grep { /^channels=/ }
     read_file("$RealBin/../mozbot.pl.cfg");
 my %nick_count;
+die "no channels" unless scalar keys %channels;
 
 my $irc = Net::IRC->new();
 $irc->debug(0);
@@ -39,6 +40,7 @@ $conn->add_handler(
         $channel = lc($channel);
         return unless exists $channels{$channel};
         $nick_count{$channel} = $count;
+        print $channel, ' ', $nick_count{$channel}, "\n";
         delete $channels{$channel};
     }
 );
@@ -57,6 +59,19 @@ $conn->add_handler(
         $channel = lc($channel);
         $nick_count{$channel} //= 0;
         $nick_count{$channel} += scalar(split(/ /, $nicks));
+        print $channel, ' ', $nick_count{$channel}, "\n";
+    }
+);
+# <<< :belew.mozilla.org 475 listbot #glob :Cannot join channel (Incorrect channel key)
+$conn->add_handler(
+    [ 475 ], # JOIN fail
+    sub {
+        my ($self, $event) = @_;
+        my (undef, $channel, $reason) = $event->args;
+        $channel = lc($channel);
+        delete $channels{$channel};
+        print $channel, " join failed: $reason\n";
+        done($self);
     }
 );
 $conn->add_handler(
