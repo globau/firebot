@@ -11,7 +11,7 @@ sub Told {
     my $self = shift;
     my ($event, $message) = @_;
     return $self->SUPER::Told(@_) unless $message =~ /^sheriff\b/i;
-    $self->say($event, 'current sheriff ' . ($self->{_sheriff} ? $self->{_sheriff} : '???'));
+    $self->say($event, 'current sheriff: ' . ($self->{_sheriff} ? $self->{_sheriff} : 'nobody'));
 }
 
 sub Schedule {
@@ -35,8 +35,12 @@ sub Scheduled {
 sub SpottedTopicChange {
     my $self = shift;
     my ($event, $channel, $topic) = @_;
-    if (lc($channel) eq '#sheriffs' && $topic =~ /sheriffduty[=: ]+(\S+)/i) {
-        $self->{_sheriff} = $1;
+    if (lc($channel) eq '#sheriffs') {
+        if ($topic =~ /sheriffduty[=: ]+(\S+)/i) {
+            $self->{_sheriff} = $1;
+        } else {
+            $self->{_sheriff} = '';
+        }
     }
     return $self->SUPER::SpottedTopicChange(@_);
 }
