@@ -285,7 +285,10 @@ until (@nicks) {
 $nick = 0 if (($nick > $#nicks) or ($nick < 0));
 
 # - check channel names are all lowercase
-foreach (@channels) { $_ = lc; }
+foreach my $chan (@channels)
+{
+    $chan = lc($chan);
+}
 
 # save configuration straight away, to make sure it is possible and to save
 # any initial settings on the first run, if anything changed.
@@ -645,13 +648,13 @@ sub on_connect {
     my @modulesToLoad = @modulenames;
     @modules = (BotModules::Admin->create('Admin', '')); # admin commands
     @modulenames = ('Admin');
-    foreach (@modulesToLoad) {
-        next if $_ eq 'Admin'; # Admin is static and is installed manually above
-        my $result = LoadModule($_);
+    foreach my $mod (@modulesToLoad) {
+        next if $mod eq 'Admin'; # Admin is static and is installed manually above
+        my $result = LoadModule($mod);
         if (ref($result)) {
-            debug("loaded $_");
+            debug("loaded $mod");
         } else {
-            debug("failed to load $_", $result);
+            debug("failed to load $mod", $result);
         }
     }
 
@@ -715,7 +718,9 @@ sub on_check_connect {
     $self->{'__mozbot__shutdown'} = 1; # HACK HACK HACK
     debug("connection timed out -- trying again");
     # XXX we don't call the SpottedQuit handlers here
-    foreach (@modules) { $_->unload(); }
+    foreach my $mod (@modules) {
+        $mod->unload();
+    }
     @modules = ();
     $self->quit('connection timed out -- trying to reconnect');
     setup_connection();
@@ -774,7 +779,9 @@ sub on_disconnected {
     } else {
         debug("eek! disconnected from network: '$reason'");
     }
-    foreach (@modules) { $_->unload(); }
+    foreach my $mod (@modules) {
+        $mod->unload();
+    }
     @modules = ();
     setup_connection();
 }
@@ -787,8 +794,8 @@ sub on_join_channel {
     push(@channels, $channel);
 	save_config_vars([\@channels]);
     debug("joined $channel, about to autojoin modules...");
-    foreach (@modules) {
-        $_->JoinedChannel(newEvent({
+    foreach my $mod (@modules) {
+        $mod->JoinedChannel(newEvent({
             'bot' => $self,
             'channel' => $channel,
             'target' => $channel,
@@ -903,9 +910,9 @@ sub on_kick {
     my ($channel, $from) = $event->args; # from is already set anyway
     my $who = $event->to;
     $event->to($channel);
-    foreach (@$who) {
-        setEventArgs($event, $_);
-        if ($_ eq $nicks[$nick]) {
+    foreach my $user (@$who) {
+        setEventArgs($event, $user);
+        if ($user eq $nicks[$nick]) {
             perform(@_, 'Kicked');
         } else {
             perform(@_, 'SpottedKick');
@@ -965,18 +972,20 @@ sub newEvent($) {
 
 sub toToChannel {
     my $self = shift;
+
     my $channel;
-    foreach (@_) {
-        if (/^[#&+\$]/os) {
+    foreach my $c (@_) {
+        if ($c =~ /^[#&+\$]/os) {
             if (defined($channel)) {
                 return '';
             } else {
-                $channel = $_;
+                $channel = $c;
             }
-        } elsif ($_ eq $nicks[$nick]) {
+        } elsif ($c eq $nicks[$nick]) {
             return '';
         }
     }
+
     return lc($channel || ''); # if message was sent to one person only, this is it
 }
 
@@ -1090,8 +1099,8 @@ sub sendmsg {
     } else {
         $self->schedule($delaytime / 2, \&drainmsgqueue) unless @msgqueue;
         if ($do eq 'msg' or $do eq 'me' or $do eq 'notice') {
-            foreach (splitMessageAcrossLines($msg)) {
-                push(@msgqueue, [$who, $_, $do]);
+            foreach my $l (splitMessageAcrossLines($msg)) {
+                push(@msgqueue, [$who, $l, $do]);
             }
         } else {
             push(@msgqueue, [$who, $msg, $do]);
@@ -1318,6 +1327,17 @@ sub bot_back {
     $markedaway = 0;
 }
 
+sub _delete_bot_modules {
+    my ($hash_ref) = @_;
+
+    foreach my $k (keys %{$hash_ref}) {
+        if ($k =~ m/^BotModules_/) {
+            delete($hash_ref->{$k});
+        }
+    }
+
+    return;
+}
 
 # internal routines for IO::Select handling
 
@@ -1348,10 +1368,11 @@ sub bot_select {
         # $@ contains the error
         debug("ERROR!!!", $@);
     }
+    
     # prevent any memory leaks by cleaning up all the variables we added
-    foreach (keys %{${$pipe}}) {
-        m/^BotModules_/ && delete(${$pipe}->{$_});
-    }
+    _delete_bot_modules($$pipe);
+
+    return;
 }
 
 sub bot_select_data_available {
@@ -1395,10 +1416,10 @@ sub bot_select_data_available {
         debug("Dropping handle...");
         $irc->removefh($handle);
         # prevent any memory leaks by cleaning up all the variables we added
-        foreach (keys %{${$handle}}) {
-            m/^BotModules_/ && delete(${$handle}->{$_});
-        }
+        _delete_bot_modules($$handle);
     }
+
+    return;
 }
 
 
@@ -1406,18 +1427,16 @@ sub bot_select_data_available {
 
 # print debugging info
 sub debug {
-    my $line;
-    foreach (@_) {
-        $line = $_; # can't chomp $_ since it is a hardref to the arguments...
-        chomp $line; # ...and they are probably a constant string!
+    foreach my $line (@_) {
+        chomp $line;
         if (-t) {
             print logdate() . " ($$) $line\n";
         }
         if ($LOGGING) {
             my $file = $LOGFILEPREFIX . '-' . DateTime->now->ymd('') . '.log';
-            if (open(LOG, ">>$file")) {
-                print LOG encode_utf8(logdate() . " $line\n");
-                close(LOG);
+            if (open(my $log_fh, '>>', $file)) {
+                print {$log_fh} encode_utf8(logdate() . " $line\n");
+                close ($log_fh);
             } else {
                 print logdate() . " [not logged, $!]\n";
             }
@@ -1476,18 +1495,20 @@ my %configStructure; # hash of cfg file keys and associated variable refs
 
 sub registerConfigVariables {
     my (@variables) = @_;
-    foreach (@variables) {
-        $configStructure{$_->[0]} = [$_->[1], $_->[0]];
+    foreach my $var (@variables) {
+        $configStructure{$var->[0]} = [$var->[1], $var->[0]];
     }
+
+    return;
 } # are you confused yet?
 
 sub configStructure {
     my (@variables) = @_;
     my %struct;
     @variables = keys %configStructure unless @variables;
-    foreach (@variables) {
-        confess("Function configStructure was passed something that is either not a ref or has not yet neem registered, so aborted") unless defined($configStructure{$_});
-        $struct{$configStructure{$_}[0]} = $configStructure{$_}[1];
+    foreach my $var (@variables) {
+        confess("Function configStructure was passed something that is either not a ref or has not yet neem registered, so aborted") unless defined($configStructure{$var});
+        $struct{$configStructure{$var}[0]} = $configStructure{$var}[1];
     }
     return \%struct;
 }
@@ -1522,14 +1543,14 @@ sub LoadModule {
     # sanitize the name
     $name =~ s/[^-a-zA-Z0-9]/-/gos;
     # check the module is not already loaded
-    foreach (@modules) {
-        if ($_->{'_name'} eq $name) {
+    foreach my $mod (@modules) {
+        if ($mod->{'_name'} eq $name) {
             return "Failed [0]: Module already loaded. Don't forget to enable it in the various channels (vars $name channels '+#channelname').";
         }
     }
     # read the module in from a file
     my $filename = "./BotModules/$name.bm"; # bm = bot module
-    my $result = open(my $file, "< $filename");
+    my $result = open(my $file, '<', $filename);
     if ($result) {
         my $code = do {
             local $/ = undef; # enable "slurp" mode
@@ -1586,15 +1607,15 @@ sub UnloadModule {
     # remove the reference from @modules
     my @newmodules;
     my @newmodulenames;
-    foreach (@modules) {
-        if ($name eq $_->{'_name'}) {
-            if ($_->{'_static'}) {
+    foreach my $mod (@modules) {
+        if ($name eq $mod->{'_name'}) {
+            if ($mod->{'_static'}) {
                 return 'Cannot unload this module, it is built in.';
             }
-            $_->unload();
+           $mod->unload();
         } else {
-            push(@newmodules, $_);
-            push(@newmodulenames, $_->{'_name'});
+            push(@newmodules, $mod);
+            push(@newmodulenames, $mod->{'_name'});
         }
     }
     if (@modules == @newmodules) {
@@ -1782,17 +1803,19 @@ sub saveConfig {
 sub registerVariables {
     my $self = shift;
     my (@variables) = @_;
-    foreach (@variables) {
-        $self->{$$_[0]} = $$_[3] if defined($$_[3]);
-        if (defined($$_[1])) {
-            if ($$_[1]) {
-                $self->{'_config'}->{$self->{'_name'}.'::'.$$_[0]} = \$self->{$$_[0]};
+    foreach my $var (@variables) {
+        $self->{$var->[0]} = $var->[3] if defined($var->[3]);
+        if (defined($var->[1])) {
+            if ($var->[1]) {
+                $self->{'_config'}->{$self->{'_name'}.'::'.$var->[0]} = \$self->{$var->[0]};
             } else {
-                delete($self->{'_config'}->{$self->{'_name'}.'::'.$$_[0]});
+                delete($self->{'_config'}->{$self->{'_name'}.'::'.$var->[0]});
             }
         }
-        $self->{'_variables'}->{$$_[0]} = $$_[2] if defined($$_[2]);
+        $self->{'_variables'}->{$var->[0]} = $var->[2] if defined($var->[2]);
     }
+
+    return;
 }
 
 # internal implementation of the scheduler
@@ -2078,8 +2101,8 @@ sub privsay {
 sub announce {
     my $self = shift;
     my ($event, $data) = @_;
-    foreach (@{$self->{'channels'}}) {
-        ::sendmsg($event->{'bot'}, $_, $data);
+    foreach my $chan (@{$self->{'channels'}}) {
+        ::sendmsg($event->{'bot'}, $chan, $data);
     }
 }
 
@@ -2606,6 +2629,8 @@ sub RegisterConfig {
         ['allowusers',      1, 1, []],
         ['denyusers',       1, 1, []],
     );
+
+    return;
 }
 
 # Set - called to set a variable to a particular value.
@@ -2619,17 +2644,15 @@ sub Set {
             ${$self->{$variable}} = $value;
         } elsif (ref($self->{$variable}) eq 'ARRAY') {
             if ($value =~ /^([-+])(.*)$/so) {
-                if ($1 eq '+') {
-                    push(@{$self->{$variable}}, $2);
+                my ($sign, $rest) = ($1, $2);
+                if ($sign eq '+') {
+                    push(@{$self->{$variable}}, $rest);
                 } else {
                     # We don't want to change the reference!!!
                     # Other variables might be pointing to there,
                     # it is *those* vars that affect the app.
-                    my @oldvalue = @{$self->{$variable}};
-                    @{$self->{$variable}} = ();
-                    foreach (@oldvalue) {
-                        push(@{$self->{$variable}}, $_) unless ($2 eq $_);
-                    }
+                    @{$self->{$variable}} =
+                        (grep { $rest ne $_ } @{$self->{$variable}}) ;
                     # XXX no feedback if nothing is done
                 }
             } else {
@@ -2706,9 +2729,15 @@ sub RegisterConfig {
         ['errorMessagesMaxLines', 1, 1, 5], # by default, only have 5 lines in error messages, trim middle if more
     );
     # now add in all the global variables...
-    foreach (keys %configStructure) {
-        $self->registerVariables([$configStructure{$_}[0], 0, 1, $configStructure{$_}[1]]) if (ref($configStructure{$_}[1]) =~ /^(?:SCALAR|ARRAY|HASH)$/go);
+    foreach my $k (keys %configStructure) {
+        if (ref($configStructure{$k}[1]) =~ /^(?:SCALAR|ARRAY|HASH)$/go) {
+            $self->registerVariables([
+                    $configStructure{$k}[0], 0, 1, $configStructure{$k}[1]]
+            )
+        }
     }
+
+    return;
 }
 
 # saveConfig - make sure we also save the main config variables...
@@ -3001,10 +3030,10 @@ sub Authed {
     my $self = shift;
     my ($event, $who) = @_;
     if ($self->isAdmin($event)) {
-        foreach (keys %userFlags) {
-            if ((($userFlags{$_} & 2) == 2) and ($authenticatedUsers{$event->{'user'}} ne $_)) {
-                $self->deleteUser($_);
-                $self->directSay($event, "Temporary administrator '$_' removed from user list.");
+        foreach my $flag (keys %userFlags) {
+            if ((($userFlags{$flag} & 2) == 2) and ($authenticatedUsers{$event->{'user'}} ne $flag)) {
+                $self->deleteUser($flag);
+                $self->directSay($event, "Temporary administrator '$flag' removed from user list.");
             }
         }
     }
@@ -3153,8 +3182,8 @@ sub Vars {
                         } elsif ($type eq 'HASH') {
                             # XXX need a 'maximum number of items' feature to prevent flooding ourselves to pieces (or is shutup please enough?)
                             $self->say($event, "Variable '$variable' in module '$modulename' is a hash with the following values:");
-                            foreach (sort keys %$value) {
-                                $self->say($event, "  '$_' => '".($value->{$_}).'\' ');
+                            foreach my $k (sort keys %$value) {
+                                $self->say($event, "  '$k' => '".($value->{$k}).'\' ');
                             }
                             $self->say($event, "End of dump of variable '$variable'.");
                         } else {
@@ -3228,8 +3257,8 @@ sub Kicked {
     my ($event, $channel) = @_;
     $self->debug("kicked from $channel by ".$event->{'from'});
     $self->debug('about to autopart modules...');
-    foreach (@modules) {
-        $_->PartedChannel($event, $channel);
+    foreach my $mod (@modules) {
+        $mod->PartedChannel($event, $channel);
     }
     return $self->SUPER::Kicked($event, $channel);
 }
@@ -3240,8 +3269,8 @@ sub SpottedPart {
     if (lc $who eq lc $event->{'nick'}) {
         $self->debug("parted $channel");
         $self->debug('about to autopart modules...');
-        foreach (@modules) {
-            $_->PartedChannel($event, $channel);
+        foreach my $mod (@modules) {
+            $mod->PartedChannel($event, $channel);
         }
     }
     return $self->SUPER::SpottedPart($event, $channel, $who);
