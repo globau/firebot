@@ -1,0 +1,142 @@
+#!/usr/bin/perl
+use strict;
+use warnings FATAL => 'all';
+use autodie;
+
+use FindBin '$RealBin';
+use File::Slurp qw( read_file );
+use Net::IRC;
+
+my $nick = 'firebot-admin';
+my ($user, $pass) = (shift, shift);
+die unless $user && $pass;
+my @channels = qw(
+    accessibility
+    addons
+    advocacy
+    androidsync
+    aoa
+    app-reviewers
+    apps
+    apz
+    ateam
+    auckland
+    australia
+    automation
+    bmo
+    boxing
+    breakpad
+    bteam
+    bugs
+    bugzilla
+    build
+    buildopenceu
+    buildopencfr
+    calendar
+    content
+    conduit
+    developers
+    devtools
+    firebot
+    firefox
+    firefox-bugs
+    flow
+    foxymonkies
+    frenchmoz
+    fx-team
+    fxos
+    fxos-comms
+    gaia-messaging
+    gfx
+    input
+    introduction
+    jsapi
+    l10n-fr
+    lagaule
+    layout-tpe
+    london
+    maildev
+    mdn
+    mdndev
+    media
+    michigan
+    mobile
+    moc
+    mozfr
+    mozilla.ch
+    mozilla.il
+    mozilla.se
+    mozreview
+    moztn
+    nightly
+    perfherder
+    places
+    productivity
+    qa
+    qanalysts
+    qawanted
+    quantum
+    relman
+    sau
+    security
+    servo
+    sheriffs
+    sumo
+    sumodev
+    systemsfe
+    tadasdas
+    taipei-platform
+    taskcluster
+    tb-bugs
+    testpilot
+    treeherder
+    trivzilla
+    ux
+    vcs
+);
+
+my @join_channels;
+my @channels_in =
+    map { lc }
+    grep { s/^channels=#// }
+    read_file("$RealBin/../mozbot.pl.cfg", chomp => 1);
+foreach my $channel (@channels) {
+    next if grep { lc($channel) eq $_ } @channels_in;
+    push @join_channels, $channel;
+}
+exit unless @join_channels;
+
+my $irc = Net::IRC->new();
+$irc->debug(0);
+my $conn = $irc->newconn(
+    Nick    => $nick,
+    Server  => 'irc.mozilla.org',
+);
+
+$conn->add_handler(
+    [ 376, 422 ], # MOTD
+    sub {
+        my ($self) = @_;
+        $self->privmsg('firebot', "auth $user $pass");
+        # todo - schedule a quit after 5 minutes
+    }
+);
+$conn->add_handler(
+    'msg',
+    sub {
+        my ($self, $event) = @_;
+        return unless $event->user eq 'firebot';
+        my $response = join(' ', $event->args);
+        if ($response eq "Hi $user!") {
+            foreach my $channel (@join_channels) {
+                $channel =~ s/^#//;
+                $self->privmsg('firebot', "join \#$channel");
+                sleep(1);
+            }
+        }
+        exit;
+    }
+);
+
+$irc->start();
+
