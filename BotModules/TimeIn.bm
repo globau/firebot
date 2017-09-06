@@ -30,8 +30,8 @@ sub RegisterConfig {
 sub Told {
     my ($self, $event, $message) = @_;
 
-    if ($self->{apiKey} && $message =~ /^time\s+in\s+(.+)$/i) {
-        my $address = $1;
+    if ($self->{apiKey} && $message =~ /^(time|date)\s+in\s+(.+)$/i) {
+        my ($mode, $address) = ($1, $2);
         $address =~ s/(^\s+|\s+$)//g;
         $address =~ s/\s+/ /g;
 
@@ -41,6 +41,7 @@ sub Told {
             $address,
         );
         if ($cached) {
+            $cached->{mode} = $mode;
             $self->time_in($event, $cached);
             return 0;
         }
@@ -50,7 +51,7 @@ sub Told {
             key => $self->{apiKey},
             address => $address,
         );
-        $self->getURI($event, $url->to_string, { state => 'geocode', address => $address });
+        $self->getURI($event, $url->to_string, { state => 'geocode', address => $address, mode => $mode });
         return 0;
     }
 
@@ -124,12 +125,13 @@ sub time_in {
             )
         );
     } else {
+        my $format = $params->{mode} eq 'date' ? 'd MMM yyyy' : 'h:mma';
         $self->say(
             $event,
             sprintf(
                 '%s: It is %s in %s',
                 $event->{from},
-                lc($dt->format_cldr('h:mma')),
+                lc($dt->format_cldr($format)),
                 $params->{name},
             )
         );
