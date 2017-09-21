@@ -30,7 +30,7 @@ sub RegisterConfig {
 sub Told {
     my ($self, $event, $message) = @_;
 
-    if ($self->{apiKey} && $message =~ /^(time|date)\s+in\s+(.+)$/i) {
+    if ($self->{apiKey} && $message =~ /^(time|date)\s+(?:in\s+)?(.+)$/i) {
         my ($mode, $address) = ($1, $2);
         $address =~ s/(^\s+|\s+$)//g;
         $address =~ s/\s+/ /g;
@@ -52,6 +52,11 @@ sub Told {
             address => $address,
         );
         $self->getURI($event, $url->to_string, { state => 'geocode', address => $address, mode => $mode });
+        return 0;
+    }
+
+    if ($message =~ /^\s*now\s*$/i) {
+        $self->time_in($event, { timezone => 'UTC', name => 'UTC' });
         return 0;
     }
 
