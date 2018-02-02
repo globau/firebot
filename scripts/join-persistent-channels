@@ -48,6 +48,7 @@ my @channels = qw(
     fxos-comms
     gaia-messaging
     gfx
+    ionmonkey
     input
     introduction
     jsapi
@@ -88,6 +89,7 @@ my @channels = qw(
     taipei-platform
     taskcluster
     tb-bugs
+    telemetry-client
     testpilot
     treeherder
     trivzilla
