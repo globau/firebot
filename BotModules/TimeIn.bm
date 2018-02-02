@@ -3,8 +3,8 @@ use strict;
 use base 'BotModules';
 
 use DateTime;
-use Mojo::JSON qw( decode_json );
-use Mojo::URL;
+use JSON qw( decode_json );
+use URI::Escape qw( uri_escape );
 
 sub Initialise {
     my $self = shift;
@@ -46,11 +46,9 @@ sub Told {
             return 0;
         }
 
-        my $url = Mojo::URL->new('https://maps.googleapis.com/maps/api/geocode/json');
-        $url->query(
-            key => $self->{apiKey},
-            address => $address,
-        );
+        my $url = 'https://maps.googleapis.com/maps/api/geocode/json?' .
+            'key=' . uri_escape($self->{apiKey}) .
+            'address=' . uri_escape($address);
         $self->getURI($event, $url->to_string, { state => 'geocode', address => $address, mode => $mode });
         return 0;
     }
