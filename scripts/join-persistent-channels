@@ -5,6 +5,8 @@ use warnings FATAL => 'all';
 use autodie;
 
 use FindBin '$RealBin';
+use lib "$RealBin/../lib";
+
 use File::Slurp qw( read_file );
 use Net::IRC;
 
@@ -110,7 +112,7 @@ foreach my $channel (@channels) {
 exit unless @join_channels;
 
 my $irc = Net::IRC->new();
-$irc->debug(0);
+$irc->debug(1);
 my $conn = $irc->newconn(
     Nick    => $nick,
     Server  => 'irc.mozilla.org',
