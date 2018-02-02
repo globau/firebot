@@ -1,4 +1,3 @@
-# -*- Mode: perl; tab-width: 4; indent-tabs-mode: nil; -*-
 ################################
 # Firebot Module               #
 ################################
@@ -8,31 +7,28 @@ use vars qw(@ISA);
 @ISA = qw(BotModules);
 1;
 
-# RegisterConfig - Called when initialised, should call registerVariables
-sub RegisterConfig {
-    my $self = shift;
-    $self->SUPER::RegisterConfig(@_);
-    $self->registerVariables(
-#        ['updateDelay', 1, 1, 120],
-#        ['bugmessages', 0, 0, 0], # how many times we have reported bug changes
-    );
-}
-
-#my $conn;
-#my @cmdqueue = ();
-#my %mailignore = ();
-
-
-# Schedule - called when bot connects to a server, to install any schedulers
-# use $self->schedule($event, $delay, $times, $data)
-# where $times is 1 for a single event, -1 for recurring events,
-# and a +ve number for an event that occurs that many times.
-#sub Schedule {
-#    my $self = shift;
-#    my ($event) = @_;
-#    $self->schedule($event, \$self->{'updateDelay'}, -1, 'bzbot');
-#    $self->SUPER::Schedule($event);
-#}
+# - every 5 minutes poll the ban list on #firefox
+# - in a sqlite db track how many times each ban mask has been put in place
+# - automatically clear bans
+#   - 1st : 5 minutes
+#   - 2nd : 1 hour
+#   - 3rd : 24 hours
+#   - 4th : 28 days
+# - clear bans by scheduling a task to remove them
+# - only remove bans set by the irc servers
+# - the db should have a row for each ban
+#   - mask, timestamp
+# - delete rows older than 180 days
+#
+# /mode #channel +b
+# --> catch mode events
+#   <<< :fripp.mozilla.org 367 plaything #cheese cheesaman!*@* bolg 1455712595
+#   Trying to handle event 'banlist'.
+#   <<< :fripp.mozilla.org 368 plaything #cheese :End of channel ban list
+#   Trying to handle event 'endofbanlist'.
+# mozbot ignores these events, need to extend it.  only allowed to have a
+# single banlist request at one time, so we can collect the responses and send
+# the result to the event pump
 
 sub Help {
     my $self = shift;
@@ -83,40 +79,25 @@ sub Told {
     my ($event, $message) = @_;
 
     if (($message =~ /^admin/i)) {
-		$self->say($event, "$event->{'from'}: My admin is glob, reachable at 'byron\@glob.uno'. Bugs about me go here: https://bugzilla.mozilla.org/enter_bug.cgi?product=Webtools&component=Mozbot");
-    } elsif (($message =~ /(who|what) is.*$event->{nick}/i) || ($message =~ /(who|what) are you/i) || ($message =~ /^\s*firebot[?\s]*$/osi)) {
-        $self->say($event, "$event->{'from'}: I'm $event->{nick}, I provide Bug Updates (and much more) for Firefox and the rest of the Mozilla world. :-) I'm maintained by glob and you can find out more about me here, https://wiki.mozilla.org/Firebot");
+		$self->say(
+		    $event,
+		    $event->{from} . ': My admin is glob, reachable at byron@glob.uno.  '
+		        . 'Docs: https://wiki.mozilla.org/Firebot'
+		);
+    } elsif (
+        ($message =~ /(who|what) is.*$event->{nick}/i)
+        || ($message =~ /(who|what) are you/i)
+        || ($message =~ /^\s*firebot[?\s]*$/i)
+    ) {
+        $self->say(
+            $event,
+            $event->{from} . ": I'm $event->{nick}, I provide Bug Updates (and much more) for "
+                . "Firefox and the rest of the Mozilla world. :-) I'm maintained by glob and you "
+                . "can find out more about me here, https://wiki.mozilla.org/Firebot"
+        );
     } else {
         return $self->SUPER::Told(@_);
     }
-    return 0; # dealt with it...
-}
 
-sub Scheduled {
-    my $self = shift;
-    my ($event, @data) = @_;
-    if ($data[0] eq 'bzbot') {
-        #$self->GetTrees($event, 0);
-        #$self->CheckForBugs($event, 0);
-    } else {
-        $self->SUPER::Scheduled($event, @data);
-    }
-}
-
-sub sayOrNotice {
-    my $self = shift;
-    if ($self->{'useNotice'}) {
-        $self->notice(@_);
-    } else {
-        $self->say(@_);
-    }
-}
-
-
-sub targettedSay {
-    my $self = shift;
-    my($event, $message, $direct) = @_;
-    if ($direct and length($message)) {
-        $self->say($event, "$event->{from}: $message");
-    }
+    return 0;
 }
