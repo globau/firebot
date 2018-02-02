@@ -29,7 +29,9 @@
 # apply the patch from bug 175222 <https://bugzilla.mozilla.org/show_bug.cgi?id=175222>
 # to your installation.
 
+use local::lib;
 use strict;
+
 use Fcntl qw(:flock);
 use File::Basename;
 

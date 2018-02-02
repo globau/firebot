@@ -70,6 +70,7 @@
 #     or rotation)
 # XXX fix the "hack hack hack" bits to be better.
 
+use local::lib;
 
 BEGIN {
     use FindBin '$RealBin';

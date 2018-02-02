@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+use local::lib;
 use strict;
 use warnings FATAL => 'all';
 use autodie;
