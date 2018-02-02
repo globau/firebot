@@ -35,24 +35,46 @@ sub Help {
     my $self = shift;
     my ($event) = @_;
     return {
-        '' => 'A karma tracker. Use the \'rank\' command to find someone\'s karma rank.',
+        '' => 'A karma tracker. Use the \'karma\' command to find someone\'s karma rank.',
         '++' => 'Increase someone\'s karma. Syntax: victim++',
         '--' => 'Decrease someone\'s karma. Syntax: victim--',
-        'rank' => 'Find someone\'s karma level. Omit the victim\'s name to get top users. Syntax: \'rank victim\' or just \'rank\'',
+        'karma' => 'Find someone\'s karma level. Omit the victim\'s name to get top users. Syntax: \'karma victim\' or just \'karma\'',
     };
 }
 
 sub Told {
     my $self = shift;
     my ($event, $message) = @_;
+    # XXX this should support multiple rank changes in a single message, but
+    # only if that message contains just rank changes.
+    # eg. Tony_6++ johnb++ johnb++ ryanc++ jlaz++
+=cut
+    if ($message =~ /^(?:\s*\S+(?:--|\+\+))+\s*$/) {
+        while ($message =~ /\s*(\S+)(--|\+\+)/g) {
+            $self->ChangeKarma($event, $1, $2 eq '++' ? 1 : -1);
+        }
+
+    elsif ($message =~ /^\s*(karma|rank|ranks)\s*$/i) {
+        $self->ReportKarmaRanks($event);
+
+    elsif ($message =~ /$message =~ /^\s*(?:karma|rank)\s+(\S+)\s*$/i) {
+        $self->ReportKarma($event, $1);
+=cut
+    #
     if ($message =~ /^(\S+)\+\+$/os) {
         $self->ChangeKarma($event, $1, 1);
+
     } elsif ($message =~ /^(\S+)\-\-$/os) {
         $self->ChangeKarma($event, $1, -1);
+
     } elsif ($message =~ /^\s*(?:karma\s+)?ranks?[?\s]*$/os) {
-        $self->ReportKarmaRanks($event, $1);
+        # eww, nasty regex.  /^\s*(karma|rank|ranks)\s*$/i
+        $self->ReportKarmaRanks($event, $1);  # $1 is ignored, thankfully because it's not defined
+
     } elsif ($message =~ /^\s*karma(?:\s+rank)?\s+([^\s\?]+)[?\s]*$/os or $message =~ /^\s*(?:karma\s+)?rank\s+([^\s\?]+)[?\s]*$/os) {
+        # /^\s*(?:karma|rank)\s+(\S+)/i
         $self->ReportKarma($event, $1);
+
     } else {
         return $self->SUPER::Told(@_);
     }
