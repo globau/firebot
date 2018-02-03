@@ -49,7 +49,6 @@ my @channels = qw(
     fx-team
     fxos
     fxos-comms
-    gaia-messaging
     gfx
     ionmonkey
     input
@@ -57,7 +56,6 @@ my @channels = qw(
     jsapi
     l10n-fr
     lagaule
-    layout-tpe
     london
     maildev
     mdn
@@ -77,19 +75,14 @@ my @channels = qw(
     places
     productivity
     qa
-    qanalysts
-    qawanted
     quantum
     relman
-    sau
     security
     servo
     sheriffs
     sumo
     sumodev
     systemsfe
-    tadasdas
-    taipei-platform
     taskcluster
     tb-bugs
     telemetry-client
