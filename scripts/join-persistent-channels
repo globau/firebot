@@ -48,7 +48,6 @@ my @channels = qw(
     frenchmoz
     fx-team
     fxos
-    fxos-comms
     gfx
     ionmonkey
     input
@@ -73,7 +72,6 @@ my @channels = qw(
     nightly
     perfherder
     places
-    productivity
     qa
     quantum
     relman
