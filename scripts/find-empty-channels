@@ -5,6 +5,8 @@ use warnings FATAL => 'all';
 use autodie;
 
 use FindBin '$RealBin';
+use lib "$RealBin/../lib";
+
 use File::Slurp;
 use Net::IRC;
 
