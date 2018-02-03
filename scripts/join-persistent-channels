@@ -112,7 +112,7 @@ foreach my $channel (@channels) {
 exit unless @join_channels;
 
 my $irc = Net::IRC->new();
-$irc->debug(1);
+$irc->debug(0);
 my $conn = $irc->newconn(
     Nick    => $nick,
     Server  => 'irc.mozilla.org',
