@@ -1,0 +1,86 @@
+package BotModules::PersistentChannels;
+use strict;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+1;
+
+use FindBin qw( $RealBin );
+
+my $DELAY_INTERVAL = 60 *  5;
+my $CHECK_INTERVAL = 60 * 60;
+
+sub Initialise {
+    my $self = shift;
+    $self->{channels_in} = {};
+}
+
+sub SpottedJoin {
+    my $self = shift;
+    my ($event, $channel, $who) = @_;
+    if ($who eq $event->{bot}->nick) {
+        $self->{channels_in}->{canon_channel($channel)} = 1;
+    }
+    return 1;
+}
+
+sub SpottedPart {
+    my $self = shift;
+    my ($event, $channel, $who) = @_;
+    if ($who eq $event->{bot}->nick) {
+        delete $self->{channels_in}->{canon_channel($channel)};
+    }
+    return 1;
+}
+
+sub Schedule {
+    my $self = shift;
+    my ($event) = @_;
+    $self->schedule($event, $DELAY_INTERVAL, 1, 'persistent-channels');
+    $self->schedule($event, $CHECK_INTERVAL, -1, 'persistent-channels');
+    return $self->SUPER::Schedule($event);
+}
+
+sub Scheduled {
+    my $self = shift;
+    my ($event, @data) = @_;
+    if ($data[0] ne 'persistent-channels') {
+        return $self->SUPER::Scheduled($event, @data);
+    }
+
+    my $config_file = "$RealBin/persistent-channels.cfg";
+    return unless -e $config_file;
+
+    my @persist_channels;
+    open(my $fh, '<', $config_file) || return;
+    while(defined(my $line = <$fh>)) {
+        my $channel = canon_channel($line);
+        next if $channel eq '';
+        push @persist_channels, $channel;
+    }
+    close($fh);
+
+    foreach my $channel (sort @persist_channels) {
+        next if exists $self->{channels_in}->{$channel};
+        $self->debug("Joining persistent channel $channel");
+        $event->{bot}->join($channel);
+    }
+}
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+
+    if ($self->isAdmin($event) && $message =~ /^\s*join-persistent-channels\b/i) {
+        $self->schedule($event, 1, 1, 'persistent-channels');
+        $self->say($event, 'requested joining of persistent channels');
+        return 0;
+    }
+
+    return $self->SUPER::Told($event, $message);
+}
+
+sub canon_channel {
+    my ($s) = @_;
+    $s =~ s/(^\s+|^#|\s+$)//g;
+    return $s eq '' ? '' : lc('#' . $s);
+}

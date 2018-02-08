@@ -8,6 +8,7 @@ spool/*
 config
 nohup.out
 mozbot.pl.cfg
+persistent-channels.cfg
 seen-times
 seen-states
 factoids-is
