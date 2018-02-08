@@ -1,6 +1,5 @@
-#!/usr/bin/perl -wT
+#!/usr/bin/perl -w
 # -*- Mode: perl; indent-tabs-mode: nil -*-
-# DO NOT REMOVE THE -T ON THE FIRST LINE!!!
 #
 #                       _           _
 #        m o z i l l a |.| o r g   | |
