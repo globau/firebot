@@ -72,9 +72,9 @@ use constant WIDTH_WHAT    => 19;
 use constant WIDTH_REMOVED => 27;
 use constant WIDTH_ADDED   => 27;
 
-# Our one command-line argument.
-#our $debug = $ARGV[0] && $ARGV[0] eq "-d";
-our $debug = $ARGV[3] && $ARGV[3] eq "-d";
+# create ~/debug.log to enable debug logging
+my $debug_log = $ENV{HOME} . '/debug.log';
+our $debug = -e $debug_log;
 
 # XXX - This probably should happen in the log directory instead, but that's
 #       more difficult to figure out reliably.
@@ -113,7 +113,13 @@ sub append_diffline ($$$$) {
 
 # Prints a string if debugging is on. Appends a newline so you don't have to.
 sub debug_print ($) {
-    (print STDERR $_[0] . "\n") if $debug;
+    my ($string) = @_;
+    return unless $debug;
+    open(my $fh, ">>" . $debug_log);
+    flock($fh, LOCK_EX);
+    print $fh $string . "\n";
+    flock($fh, LOCK_UN);
+    close($fh);
 }
 
 # Helps with generate_log for Flag messages.
@@ -284,6 +290,7 @@ sub parse_mail ($) {
     my $email = Email::MIME->new($mail_text);
 
     debug_print("Parsing Message " . $email->header('Message-ID'));
+    debug_print("Subject: " . $email->header('Subject'));
 
     my $body = $email->body;
     my @body_lines = split("\n", $body);
@@ -521,7 +528,7 @@ sub generate_log ($) {
         }
     }
 
-    debug_print("Generated Log Lines.");
+    debug_print("Generated " . scalar(@lines) . " Log Line" . (scalar(@lines) == 1 ? '' : 's') . ".");
     debug_print("Log Line: $_") foreach (@lines);
     
     return join("\n", @lines);
@@ -531,22 +538,23 @@ sub generate_log ($) {
 sub append_log ($) {
     my ($string) = @_;
 
-    (open FILE, ">>" . $bug_log)
-        or die "Couldn't open bug log file $bug_log: $!";
+    open(my $fh, ">>" . $bug_log)
+        or die "Couldn't open bug log file $bug_log: $!\n";
     debug_print("Waiting for a lock on the log...");
-    flock(FILE, LOCK_EX);
-    print FILE $string . "\n";
-    flock(FILE, LOCK_UN);
+    flock($fh, LOCK_EX)
+        or die "Failed to acquire lock on $bug_log: $!\n";
+    print $fh $string . "\n";
+    flock($fh, LOCK_UN)
+        or die "Failed to release lock on $bug_log: $!\n";
     debug_print("Printed lines to log and unlocked file.");
-    close FILE;
+    close($fh)
+        or die "Failed to write to $bug_log: $!\n";
 }
 
 
 #####################################################################
 # Main Script
 #####################################################################
-
-debug_print("\n\n");
 
 unless (-e $bug_log) {
     print STDERR "$bug_log does not exist, so I assume that mozbot is not"
@@ -567,6 +575,3 @@ if (defined $bug_info) {
         append_log($log_lines);
     }
 }
-
-debug_print("All done!");
-exit;
