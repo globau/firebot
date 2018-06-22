@@ -3,7 +3,9 @@ use strict;
 use base 'BotModules';
 
 use DateTime;
+use DateTime::TimeZone ();
 use JSON qw( decode_json );
+use List::Util qw( any );
 use URI::Escape qw( uri_escape );
 
 sub Initialise {
@@ -11,6 +13,17 @@ sub Initialise {
     $self->{dbh} = $self->sqlite();
     $self->{dbh}->do("CREATE TABLE IF NOT EXISTS places(address CHAR, name CHAR, timezone CHAR)");
     $self->{dbh}->do("CREATE UNIQUE INDEX IF NOT EXISTS places_idx ON places(address COLLATE NOCASE)");
+
+    my %tz_map;
+    foreach my $tz (DateTime::TimeZone->all_names()) {
+        if ($tz =~ /^([A-Z]{3})\d([A-Z]{3})$/) {
+            my ($st, $dt) = ($1, $2);
+            $tz_map{lc($st)} = { tz => $tz, name => $st };
+            $tz_map{lc($dt)} = { tz => $tz, name => $dt };
+        }
+        $tz_map{lc($tz)} = { tz => $tz };
+    }
+    $self->{tz_map} = \%tz_map;
 }
 
 sub Unload {
@@ -30,29 +43,42 @@ sub RegisterConfig {
 sub Told {
     my ($self, $event, $message) = @_;
 
-    if ($self->{apiKey} && $message =~ /^(time|date)\s+(?:in\s+)?(.+)$/i) {
-        my ($mode, $address) = ($1, $2);
-        $address =~ s/(^\s+|\s+$)//g;
-        $address =~ s/\s+/ /g;
+    if ($message =~ /^(time|date)\s+(?:in\s+)?(.+)$/i) {
+        my ($mode, $query) = ($1, $2);
+        $query =~ s/(^\s+|\s+$)//g;
+        $query =~ s/\s+/ /g;
 
-        my $cached = $self->{dbh}->selectrow_hashref(
-            "SELECT address,name,timezone FROM places WHERE address LIKE ?",
-            undef,
-            $address,
-        );
-        if ($cached) {
-            $cached->{mode} = $mode;
-            $self->time_in($event, $cached);
+        if (my $tz = $self->{tz_map}->{lc($query)}) {
+            # provided a timezone
+            $self->time_in($event, { timezone => $tz->{tz}, name => $tz->{name} // $tz->{tz} });
+            return 0;
+
+        } elsif ($query =~ /^[\+\-]?\d+$/ && DateTime::TimeZone->offset_as_string($query)) {
+            # provided an offset
+            $self->time_in($event, { timezone => $query, name => $query });
+            return 0;
+
+        } elsif ($self->{apiKey}) {
+            # provided a location
+            my $cached = $self->{dbh}->selectrow_hashref(
+                "SELECT address,name,timezone FROM places WHERE address LIKE ?",
+                undef,
+                $query,
+            );
+            if ($cached) {
+                $cached->{mode} = $mode;
+                $self->time_in($event, $cached);
+                return 0;
+            }
+
+            my $url = 'https://maps.googleapis.com/maps/api/geocode/json?' .
+                join('&',
+                    'key=' . uri_escape($self->{apiKey}),
+                    '&address=' . uri_escape($query),
+                );
+            $self->getURI($event, $url, { state => 'geocode', address => $query, mode => $mode });
             return 0;
         }
-
-        my $url = 'https://maps.googleapis.com/maps/api/geocode/json?' .
-            join('&',
-                'key=' . uri_escape($self->{apiKey}),
-                '&address=' . uri_escape($address),
-            );
-        $self->getURI($event, $url, { state => 'geocode', address => $address, mode => $mode });
-        return 0;
     }
 
     if ($message =~ /^\s*now\s*$/i) {
@@ -69,17 +95,27 @@ sub GotURI {
     my @response;
     if ($params->{state} eq 'geocode') {
         eval {
-            my $result = decode_json($output);
-            die "geocode: bad status\n" unless $result->{status} eq 'OK';
-            my $results = $result->{results};
-            die "geocode: no results\n" unless @$results;
-            $params->{name} = $results->[0]->{formatted_address};
-            $params->{lat} = detaint_float($results->[0]->{geometry}->{location}->{lat});
-            $params->{lng} = detaint_float($results->[0]->{geometry}->{location}->{lng});
+            my $response = decode_json($output);
+            die "geocode: bad status\n" unless $response->{status} eq 'OK';
+            my $results = $response->{results};
+            die "geocode: no results\n" unless @{$results};
+            my $valid_result;
+            foreach my $result (@{$results}) {
+                foreach my $type (@{ $result->{types} }) {
+                    # only locations, not points of interest, businesses, etc
+                    if (any { $_ eq $type } qw( locality political postal_code airport )) {
+                        $valid_result = $result;
+                        last;
+                    }
+                }
+            }
+            die "geocode: no valid results\n" unless $valid_result;
+            $params->{name} = $valid_result->{formatted_address};
+            $params->{lat} = detaint_float($valid_result->{geometry}->{location}->{lat});
+            $params->{lng} = detaint_float($valid_result->{geometry}->{location}->{lng});
         };
         if ($@) {
             push @response, "Unable to determine time in '" . $params->{address} . "'";
-            # push @response, $@; # debugging
         } else {
             my $url = 'https://maps.googleapis.com/maps/api/timezone/json?' .
                 join('&',
